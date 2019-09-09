@@ -2,8 +2,11 @@
 name = "peekmore"
 version = "0.1.0"
 authors = ["foresterre <garm@ilumeo.com>"]
+description = "Iterator which enables one to peek further than one element."
 edition = "2018"
 repository = "https://github.com/foresterre/peekmore"
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/peekmore"
 readme = "README.md"
 exclude = [
     ".idea/*",
