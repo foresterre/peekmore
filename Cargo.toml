@@ -1,8 +1,8 @@
 [package]
 name = "peekmore"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["foresterre <garm@ilumeo.com>"]
-description = "Iterator which enables one to peek further than one element."
+description = "Iterator which can peek forward multiple elements."
 edition = "2018"
 repository = "https://github.com/foresterre/peekmore"
 license = "MIT OR Apache-2.0"

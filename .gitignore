@@ -1,4 +1,14 @@
 /target
 **/*.rs.bk
 Cargo.lock
+
+# rustdoc
+doc
+
+# sometimes easier to create a small program than using lldb,
+# especially since with no_std, we can't use dbg! conveniently.
+src/bin/
+
+# editors
 .idea/
+.vscode/
