@@ -1,6 +1,6 @@
 # peekmore
 
-This crates introduces a multi-peekable iterator.
+This crate introduces a multi-peekable iterator.
 The iterator is similar to [core::iterator::Peekable](https://doc.rust-lang.org/core/iter/struct.Peekable.html). 
 The main difference is that Peekable only allows you to peek at the next element and no further.
 This crate aims to take that limitation away.

@@ -3,7 +3,7 @@
 
 //! **Synopsis:**
 //!
-//! This crates introduces a multi-peekable iterator.
+//! This crate introduces a multi-peekable iterator.
 //! The iterator is similar to [`Peekable`]. The main difference is that [`Peekable`] only
 //! allows you to peek at the next element and no further. This crate aims to take that limitation
 //! away.
