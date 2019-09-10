@@ -40,8 +40,8 @@ assert_eq!(v3, Some(&&3));
 iter.reset_view();
 
 // Check that we are indeed at the second element again.
-let v3 = iter.peek();
-assert_eq!(v3, Some(&&2));
+let v2 = iter.peek();
+assert_eq!(v2, Some(&&2));
 
 // Shift the peek view to the right twice by chaining the advance_view method.
 let _ = iter.advance_view().advance_view();
@@ -49,6 +49,10 @@ let _ = iter.advance_view().advance_view();
 // Verify that the peek view is indeed at the fourth element.
 let v4 = iter.peek();
 assert_eq!(v4, Some(&&4));
+
+//We can also shift the peek view and peek with a single operation.
+let v3 = iter.peek_next();
+assert_eq!(v3, Some(&&3));
 ```
 
 ### Illustrated example
