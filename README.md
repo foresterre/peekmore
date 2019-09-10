@@ -50,6 +50,9 @@ let _ = iter.advance_view().advance_view();
 let v4 = iter.peek();
 assert_eq!(v4, Some(&&4));
 
+// Reset the view again.
+iter.reset_view();
+
 //We can also shift the peek view and peek with a single operation.
 let v3 = iter.peek_next();
 assert_eq!(v3, Some(&&3));
