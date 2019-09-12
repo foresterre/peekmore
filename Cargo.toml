@@ -22,6 +22,7 @@ categories = ["no-std"]
 default = []
 
 # smallvec with no-std requires nightly.
+# see https://github.com/servo/rust-smallvec/issues/160
 [dependencies.smallvec]
 version = "0.6.10"
 optional = true
