@@ -17,4 +17,12 @@ keywords = ["peek", "lookahead", "iterator", "peekable", "look-ahead"]
 categories = ["no-std"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dependencies]
+
+[features]
+default = []
+
+# smallvec with no-std requires nightly.
+[dependencies.smallvec]
+version = "0.6.10"
+optional = true
+default-features = false
