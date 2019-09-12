@@ -113,6 +113,8 @@ impl<I: Iterator> CreatePeekMoreIterator for I {
     }
 }
 
+/// Default stack size for SmallVec.
+/// Admittedly the current size is chosen quite arbitrarily.
 #[cfg(feature = "smallvec")]
 const DEFAULT_STACK_SIZE: usize = 256;
 
