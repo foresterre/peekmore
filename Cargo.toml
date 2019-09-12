@@ -1,6 +1,6 @@
 [package]
 name = "peekmore"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["foresterre <garm@ilumeo.com>"]
 description = "Iterator which can peek forward multiple elements."
 edition = "2018"
