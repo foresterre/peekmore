@@ -8,6 +8,17 @@
 //! allows you to peek at the next element and no further. This crate aims to take that limitation
 //! away.
 //!
+//! **Peekable queue:**
+//!
+//! To enable peeking at multiple elements ahead of consuming a next element, the iterator uses a
+//! traversable queue which holds the elements which you can peek at, but have not been
+//! consumed (yet).
+//! By default the underlying data structure of this queue is a Vec. By enabling the `smallvec`
+//! feature, you can opt-in to use SmallVec as the underlying queue data structure. SmallVec uses
+//! the stack for a limited amount of elements and will only allocate on the heap if this maximum
+//! amount of elements is reached. SmallVec support for `no_std` is experimental and currently
+//! [requires] a nightly compiler.
+//!
 //! **Usage example:**
 //!
 //! ```rust
@@ -65,14 +76,20 @@
 //!
 //! [`Peekable`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html
 //! [`PeekView::peek`]: trait.PeekView.html#tymethod.peek
+//! [requires]: https://github.com/servo/rust-smallvec/issues/160
 
 /// We do need to allocate to save and store elements which are in the future compared to our last
 /// iterator element. Perhaps in the future we could optimize this slightly by using the stack for
 /// a limited amount of elements.
 extern crate alloc;
 
-/// We use a Vec to queue iterator elements.
+/// We use a Vec to queue iterator elements if the smallvec feature is disabled.
+#[cfg(not(feature = "smallvec"))]
 use alloc::vec::Vec;
+
+/// If the smallvec feature is enabled, we use a SmallVec to queue iterator elements instead of a Vec.
+#[cfg(feature = "smallvec")]
+use smallvec::SmallVec;
 
 /// Trait which allows one to create an iterator which allows us to peek multiple times forward.
 pub trait CreatePeekMoreIterator: Iterator + Sized {
@@ -84,11 +101,22 @@ impl<I: Iterator> CreatePeekMoreIterator for I {
     fn peekmore(self) -> PeekMoreIterator<I> {
         PeekMoreIterator {
             iterator: self,
+
+            #[cfg(not(feature = "smallvec"))]
             queue: Vec::new(),
+
+            #[cfg(feature = "smallvec")]
+            queue: SmallVec::new(),
+
             needle: 0usize,
         }
     }
 }
+
+/// Default stack size for SmallVec.
+/// Admittedly the current size is chosen quite arbitrarily.
+#[cfg(feature = "smallvec")]
+const DEFAULT_STACK_SIZE: usize = 256;
 
 /// This iterator makes it possible to peek multiple times without consuming a value.
 /// In reality the underlying iterator will be consumed, but the values will be stored in a local
@@ -102,7 +130,10 @@ pub struct PeekMoreIterator<I: Iterator> {
     /// The queue represent the items of our iterator which have not been consumed, but have been
     /// prepared to view ('peek') without consuming them. Once an element is consumed, we can no longer
     /// view an item in the queue.
+    #[cfg(not(feature = "smallvec"))]
     queue: Vec<Option<I::Item>>,
+    #[cfg(feature = "smallvec")]
+    queue: SmallVec<[Option<I::Item>; DEFAULT_STACK_SIZE]>,
 
     /// The needle helps us determine which item we currently have in view.
     /// Within these docs, it is also sometimes known as the peek view, peek view handle and peek view
@@ -484,7 +515,7 @@ mod tests {
         assert_eq!(v2, Some(&&2));
 
         let _ = iter.reset_view();
-        let v1again = iter.peek();;
+        let v1again = iter.peek();
         assert_eq!(v1again, Some(&&1));
 
         let v2again = iter.peek_next();

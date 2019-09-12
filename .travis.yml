@@ -1,14 +1,27 @@
 language: rust
-rust:
-  - stable
-  - nightly
-os:
-  - linux
-  - windows
+before_install:
+  - if [ $TRAVIS_OS_NAME=linux ]; then chmod +x -R .ci; fi
+
 matrix:
   allow_failures:
-    - rust: nightly
+    - env: ALLOW_FAILURE=1
   fast_finish: true
-script:
-  - cargo build --verbose --all
-  - cargo test --verbose --all
+  include:
+    - name: "stable->linux"
+      rust: stable
+      os: linux
+      script: .ci/test.sh
+    - name: "stable->windows"
+      rust: stable
+      os: windows
+      script: .ci/test.sh
+    - name : "nightly->linux"
+      rust: nightly
+      os: linux
+      env: ALLOW_FAILURE=1
+      script: .ci/test_nightly.sh
+    - name: "nightly->windows"
+      rust: nightly
+      os: windows
+      env: ALLOW_FAILURE=1
+      script: .ci/test_nightly.sh
