@@ -22,7 +22,7 @@
 //! **Usage example:**
 //!
 //! ```rust
-//! use peekmore::{CreatePeekMoreIterator, PeekView};
+//! use peekmore::PeekMore;
 //!
 //! let iterable = [1, 2, 3, 4];
 //! let mut iter = iterable.iter().peekmore();
@@ -72,10 +72,10 @@
 //!
 //! **Illustrated example:**
 //!
-//! An illustrated example can be found at the [`PeekView::peek`] documentation.
+//! An illustrated example can be found at the [`PeekMoreIterator::peek`] documentation.
 //!
 //! [`Peekable`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html
-//! [`PeekView::peek`]: trait.PeekView.html#tymethod.peek
+//! [`PeekMoreIterator::peek`]: struct.PeekMoreIterator.html#method.peek
 //! [requires]: https://github.com/servo/rust-smallvec/issues/160
 
 /// We do need to allocate to save and store elements which are in the future compared to our last
@@ -92,12 +92,12 @@ use alloc::vec::Vec;
 use smallvec::SmallVec;
 
 /// Trait which allows one to create an iterator which allows us to peek multiple times forward.
-pub trait CreatePeekMoreIterator: Iterator + Sized {
+pub trait PeekMore: Iterator + Sized {
     /// Create an iterator where we can look (peek) forward multiple times from an existing iterator.
     fn peekmore(self) -> PeekMoreIterator<Self>;
 }
 
-impl<I: Iterator> CreatePeekMoreIterator for I {
+impl<I: Iterator> PeekMore for I {
     fn peekmore(self) -> PeekMoreIterator<I> {
         PeekMoreIterator {
             iterator: self,
@@ -121,7 +121,7 @@ const DEFAULT_STACK_SIZE: usize = 256;
 /// This iterator makes it possible to peek multiple times without consuming a value.
 /// In reality the underlying iterator will be consumed, but the values will be stored in a local
 /// vector. This vector allows us to shift to visible element (the 'view').
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PeekMoreIterator<I: Iterator> {
     /// Inner iterator. Consumption of this inner iterator does not represent consumption of the
     /// PeekMoreIterator.
@@ -145,10 +145,7 @@ pub struct PeekMoreIterator<I: Iterator> {
     needle: usize,
 }
 
-/// Adds functions which enable non-consuming viewing of non-consumed elements of an iterator.
-pub trait PeekView<I: Iterator> {
-    // methods to preview the next non consumed elements of the iterator
-
+impl<I: Iterator> PeekMoreIterator<I> {
     /// Get the reference of our current peek view window.
     /// Note that `peek()` will always return a reference to the element where our current peek view
     /// handle points to.
@@ -165,7 +162,7 @@ pub trait PeekView<I: Iterator> {
     /// * start:
     ///
     /// ```rust
-    /// use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// use peekmore::PeekMore;
     ///
     /// // initialize our iterator
     /// let iterable = [1, 2, 3, 4];
@@ -183,7 +180,7 @@ pub trait PeekView<I: Iterator> {
     /// * call `peek()`:
     ///
     /// ```rust
-    /// # use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
     /// let j = iterator.peek();
@@ -203,7 +200,7 @@ pub trait PeekView<I: Iterator> {
     /// * call `advance_view()`
     ///
     /// ```rust
-    /// # use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
     /// let iter = iterator.advance_view();
@@ -219,12 +216,12 @@ pub trait PeekView<I: Iterator> {
     ///
     /// * call `peek()`
     ///   _or_ `peek(); peek()`  _or_ `peek(); peek(); peek()` etc.
-    ///   
+    ///
     /// (The reference returned by `peek()` will not change, similar to the behaviour of [`core::iter::Peekable::peek`]
     ///      In order to move to the next peekable element, we need to advance our view.)
     ///
     /// ```rust
-    /// # use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
     /// # let iter = iterator.advance_view();
@@ -250,7 +247,7 @@ pub trait PeekView<I: Iterator> {
     ///     (i.e. advance the iterator; the first element will be consumed)
     ///
     /// ```rust
-    /// # use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
     /// # let iter = iterator.advance_view();
@@ -274,7 +271,7 @@ pub trait PeekView<I: Iterator> {
     ///
     ///
     /// ```rust
-    /// # use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
     /// # let iter = iterator.advance_view();
@@ -307,7 +304,7 @@ pub trait PeekView<I: Iterator> {
     /// * Consume more elements by calling `next()` until we reach `None`:
     ///
     /// ```rust
-    /// # use peekmore::{CreatePeekMoreIterator, PeekView};
+    /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
     /// # let iter = iterator.advance_view();
@@ -334,26 +331,7 @@ pub trait PeekView<I: Iterator> {
     /// assert_eq!(i, None);
     /// ```
     /// [`core::iter::Peekable::peek`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html#method.peek
-    fn peek(&mut self) -> Option<&I::Item>;
-
-    /// Advance the view to the next element and return a reference to its value.
-    fn peek_next(&mut self) -> Option<&I::Item>;
-
-    // methods to control our view
-
-    /// Advance the peekable view.
-    /// This does not advance the iterator itself. To advance the iterator, use `Iterator::next()`.
-    fn advance_view(&mut self) -> &mut Self;
-
-    /// Reset the view. If we call [`peek`] just after a reset,
-    /// it will return a reference to the first element again.
-    ///
-    /// [`peek`]: trait.PeekView.html#method.peek
-    fn reset_view(&mut self);
-}
-
-impl<I: Iterator> PeekView<I> for PeekMoreIterator<I> {
-    fn peek(&mut self) -> Option<&I::Item> {
+    pub fn peek(&mut self) -> Option<&I::Item> {
         if self.queue.len() <= self.needle {
             for _ in self.queue.len()..=self.needle {
                 self.push_next_to_queue()
@@ -363,12 +341,15 @@ impl<I: Iterator> PeekView<I> for PeekMoreIterator<I> {
     }
 
     // convenient as we don't have to re-assign our mutable borrow on the 'user' side.
-    fn peek_next(&mut self) -> Option<&I::Item> {
+    /// Advance the view to the next element and return a reference to its value.
+    pub fn peek_next(&mut self) -> Option<&I::Item> {
         let this = self.advance_view();
         this.peek()
     }
 
-    fn advance_view(&mut self) -> &mut PeekMoreIterator<I> {
+    /// Advance the peekable view.
+    /// This does not advance the iterator itself. To advance the iterator, use `Iterator::next()`.
+    pub fn advance_view(&mut self) -> &mut PeekMoreIterator<I> {
         match &self.needle {
             0 if self.queue.is_empty() => {
                 self.push_next_to_queue();
@@ -383,12 +364,14 @@ impl<I: Iterator> PeekView<I> for PeekMoreIterator<I> {
         self
     }
 
-    fn reset_view(&mut self) {
+    /// Reset the view. If we call [`peek`] just after a reset,
+    /// it will return a reference to the first element again.
+    ///
+    /// [`peek`]: struct.PeekMoreIterator.html#method.peek
+    pub fn reset_view(&mut self) {
         self.needle = 0;
     }
-}
 
-impl<I: Iterator> PeekMoreIterator<I> {
     /// Consume the underlying iterator and push an element to the queue.
     fn push_next_to_queue(&mut self) {
         let item = self.iterator.next();
