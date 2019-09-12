@@ -348,11 +348,11 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Try to peek at a previous element. If no such element exists (i.e. our peek view is already
-    /// at the same point as the next iterator element), it will return [`PriorElement::None`].
-    /// If a previous element does exist, [`PriorElement::Just`] is returned.
+    /// at the same point as the next iterator element), it will return [`PriorElement::Consumed`].
+    /// If a previous element does exist, [`PriorElement::Peekable`] is returned.
     ///
-    /// [`PriorElement::None`]: enum.PriorElement.html#variant.None
-    /// [`PriorElement::Just`]: enum.PriorElement.html#variant.Just
+    /// [`PriorElement::Consumed`]: enum.PriorElement.html#variant.Consumed
+    /// [`PriorElement::Peekable`]: enum.PriorElement.html#variant.Peekable
     #[inline]
     pub fn peek_previous(&mut self) -> PriorElement<Option<&I::Item>> {
         if self.needle >= 1 {
@@ -466,25 +466,11 @@ pub enum PriorElement<T> {
 
 impl<T> PriorElement<T> {
     /// Release the power of the Option type.
-    fn into_option(self) -> Option<T> {
+    pub fn into_option(self) -> Option<T> {
         match self {
             PriorElement::Peekable(k) => Some(k),
             PriorElement::Consumed => None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests_extras {
-    use super::*;
-
-    #[test]
-    fn from_prior_element_into_option() {
-        type Int = i32;
-        let prior: PriorElement<Int> = PriorElement::Peekable(1);
-        let option: Option<Int> = prior.into_option();
-
-        assert_eq!(option, Some(1i32));
     }
 }
 
@@ -814,4 +800,28 @@ mod tests {
         assert_eq!(peek, PriorElement::Consumed);
         assert_eq!(iter.needle_position(), 0);
     }
+}
+
+#[cfg(test)]
+mod tests_prior_element {
+    use super::*;
+
+    #[test]
+    fn from_prior_element_into_some() {
+        type Int = i32;
+        let prior: PriorElement<Int> = PriorElement::Peekable(1);
+        let option: Option<Int> = prior.into_option();
+
+        assert_eq!(option, Some(1i32));
+    }
+
+    #[test]
+    fn from_prior_element_into_none() {
+        type Int = i32;
+        let prior: PriorElement<Int> = PriorElement::Consumed;
+        let option: Option<Int> = prior.into_option();
+
+        assert_eq!(option, None);
+    }
+
 }
