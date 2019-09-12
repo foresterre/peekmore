@@ -347,6 +347,22 @@ impl<I: Iterator> PeekMoreIterator<I> {
         this.peek()
     }
 
+    /// Try to peek at a previous element. If no such element exists (i.e. our peek view is already
+    /// at the same point as the next iterator element), it will return [`PriorElement::Consumed`].
+    /// If a previous element does exist, [`PriorElement::Peekable`] is returned.
+    ///
+    /// [`PriorElement::Consumed`]: enum.PriorElement.html#variant.Consumed
+    /// [`PriorElement::Peekable`]: enum.PriorElement.html#variant.Peekable
+    #[inline]
+    pub fn peek_previous(&mut self) -> PriorElement<Option<&I::Item>> {
+        if self.needle >= 1 {
+            self.decrement_needle();
+            PriorElement::Peekable(self.peek())
+        } else {
+            PriorElement::Consumed
+        }
+    }
+
     /// Advance the peekable view.
     /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
     ///
@@ -436,6 +452,27 @@ impl<I: ExactSizeIterator> ExactSizeIterator for PeekMoreIterator<I> {}
 ///
 /// [`FusedIterator`]: https://doc.rust-lang.org/core/iter/trait.FusedIterator.html
 impl<I: FusedIterator> FusedIterator for PeekMoreIterator<I> {}
+
+/// Type which communicates that no previous element can exist (because it has been consumed).
+/// Created to differentiate from the Option::None which communicates that an iterator is finished.
+#[derive(Debug, Eq, PartialEq)]
+pub enum PriorElement<T> {
+    /// A prior peekable (non consumed) element exists.
+    Peekable(T),
+
+    /// No prior peekable (element has been consumed / or doesn't exist) element exists.
+    Consumed,
+}
+
+impl<T> PriorElement<T> {
+    /// Release the power of the Option type.
+    pub fn into_option(self) -> Option<T> {
+        match self {
+            PriorElement::Peekable(k) => Some(k),
+            PriorElement::Consumed => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -698,4 +735,93 @@ mod tests {
         let count = iter.count();
         assert_eq!(count, 2);
     }
+
+    #[test]
+    fn peek_previous() {
+        let iterable = [1, 2, 3];
+        let mut iter = iterable.iter().peekmore(); // j = 1
+
+        iter.advance_view(); // j = 2
+        iter.advance_view(); // j = 3
+        let value = iter.peek().unwrap(); // 3
+        assert_eq!(value, &&3);
+
+        let peek = iter.peek_previous(); // 2
+        assert_eq!(peek, PriorElement::Peekable(Some(&&2)));
+        assert_eq!(iter.needle_position(), 1);
+
+        let peek = iter.peek_previous(); // 1
+        assert_eq!(peek, PriorElement::Peekable(Some(&&1)));
+        assert_eq!(iter.needle_position(), 0);
+
+        let peek = iter.peek_previous();
+        assert_eq!(peek, PriorElement::Consumed);
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn peek_previous_beyond_none() {
+        let iterable = [1];
+        let mut iter = iterable.iter().peekmore(); // j = 1
+        assert_eq!(iter.needle_position(), 0);
+
+        iter.advance_view(); // j = None (1)
+        let peek = iter.peek();
+        assert_eq!(peek, None);
+        assert_eq!(iter.needle_position(), 1);
+
+        iter.advance_view(); // j = None (2)
+        let peek = iter.peek();
+        assert_eq!(peek, None);
+        assert_eq!(iter.needle_position(), 2);
+
+        iter.advance_view(); // j = None (3)
+        let peek = iter.peek(); // current
+        assert_eq!(peek, None);
+        assert_eq!(iter.needle_position(), 3);
+
+        let peek = iter.peek_previous(); // None (2)
+        assert_eq!(peek, PriorElement::Peekable(None));
+        assert_eq!(iter.needle_position(), 2);
+
+        let peek = iter.peek_previous(); // None (1)
+        assert_eq!(peek, PriorElement::Peekable(None));
+        assert_eq!(iter.needle_position(), 1);
+
+        let peek = iter.peek_previous(); // 1
+        assert_eq!(peek, PriorElement::Peekable(Some(&&1)));
+        assert_eq!(iter.needle_position(), 0);
+
+        let peek = iter.peek_previous();
+        assert_eq!(peek, PriorElement::Consumed);
+        assert_eq!(iter.needle_position(), 0);
+
+        let peek = iter.peek_previous();
+        assert_eq!(peek, PriorElement::Consumed);
+        assert_eq!(iter.needle_position(), 0);
+    }
+}
+
+#[cfg(test)]
+mod tests_prior_element {
+    use super::*;
+
+    #[test]
+    fn from_prior_element_into_some() {
+        type Int = i32;
+        let prior: PriorElement<Int> = PriorElement::Peekable(1);
+        let option: Option<Int> = prior.into_option();
+
+        assert_eq!(option, Some(1i32));
+    }
+
+    #[test]
+    fn from_prior_element_into_none() {
+        type Int = i32;
+        let prior: PriorElement<Int> = PriorElement::Consumed;
+        let option: Option<Int> = prior.into_option();
+
+        assert_eq!(option, None);
+    }
+
 }
