@@ -10,7 +10,7 @@ The documentation can be found at [docs.rs/peekmore](https://docs.rs/peekmore/).
 ### Usage example:
 
 ```rust
-use peekmore::{CreatePeekMoreIterator, PeekView};
+use peekmore::PeekMore;
 
 let iterable = [1, 2, 3, 4];
 let mut iter = iterable.iter().peekmore();
@@ -68,7 +68,7 @@ represents the position of the current peek view (i.e. the current element refer
 * start:
 
 ```rust
-use peekmore::{CreatePeekMoreIterator, PeekView};
+use peekmore::PeekMore;
 
 // initialize our iterator
 let iterable = [1, 2, 3, 4];
