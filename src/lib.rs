@@ -83,6 +83,8 @@
 /// a limited amount of elements.
 extern crate alloc;
 
+use core::iter::FusedIterator;
+
 /// We use a Vec to queue iterator elements if the smallvec feature is disabled.
 #[cfg(not(feature = "smallvec"))]
 use alloc::vec::Vec;
@@ -121,7 +123,7 @@ const DEFAULT_STACK_SIZE: usize = 256;
 /// This iterator makes it possible to peek multiple times without consuming a value.
 /// In reality the underlying iterator will be consumed, but the values will be stored in a local
 /// vector. This vector allows us to shift to visible element (the 'view').
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct PeekMoreIterator<I: Iterator> {
     /// Inner iterator. Consumption of this inner iterator does not represent consumption of the
     /// PeekMoreIterator.
@@ -331,6 +333,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// assert_eq!(i, None);
     /// ```
     /// [`core::iter::Peekable::peek`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html#method.peek
+    #[inline]
     pub fn peek(&mut self) -> Option<&I::Item> {
         self.fill_queue();
         self.queue.get(self.needle).and_then(|v| v.as_ref())
@@ -338,6 +341,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     // convenient as we don't have to re-assign our mutable borrow on the 'user' side.
     /// Advance the view to the next element and return a reference to its value.
+    #[inline]
     pub fn peek_next(&mut self) -> Option<&I::Item> {
         let this = self.advance_view();
         this.peek()
@@ -347,6 +351,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
     ///
     /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
+    #[inline]
     pub fn advance_view(&mut self) -> &mut PeekMoreIterator<I> {
         self.increment_needle();
         self
@@ -356,6 +361,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// it will return a reference to the first element again.
     ///
     /// [`peek`]: struct.PeekMoreIterator.html#method.peek
+    #[inline]
     pub fn reset_view(&mut self) {
         self.needle = 0;
     }
@@ -371,6 +377,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Consume the underlying iterator and push an element to the queue.
+    #[inline]
     fn push_next_to_queue(&mut self) {
         let item = self.iterator.next();
         self.queue.push(item);
@@ -378,6 +385,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     /// Increment the needle which points to the current peekable item.
     /// Note: if the needle is [core::usize::MAX], it will not increment any further.
+    #[inline]
     fn increment_needle(&mut self) {
         // do not overflow
         if self.needle < core::usize::MAX {
@@ -387,6 +395,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     /// Decrement the needle which points to the current peekable item.
     /// Note: if the needle is [core::usize::MIN], it will not decrement any further.
+    #[inline]
     fn decrement_needle(&mut self) {
         if self.needle > core::usize::MIN {
             self.needle -= 1;
@@ -414,6 +423,16 @@ impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
         res
     }
 }
+
+/// Uses [`ExactSizeIterator`] default implementation.
+///
+/// [`ExactSizeIterator`]: https://doc.rust-lang.org/core/iter/trait.ExactSizeIterator.html
+impl<I: ExactSizeIterator> ExactSizeIterator for PeekMoreIterator<I> {}
+
+/// Uses [`FusedIterator`] default implementation.
+///
+/// [`FusedIterator`]: https://doc.rust-lang.org/core/iter/trait.FusedIterator.html
+impl<I: FusedIterator> FusedIterator for PeekMoreIterator<I> {}
 
 #[cfg(test)]
 mod tests {
@@ -659,5 +678,21 @@ mod tests {
 
         let v4 = iter.peek();
         assert_eq!(v4, Some(&&4));
+    }
+
+    #[test]
+    fn test_with_inherited_feature_count() {
+        let iterable = [1, 2, 3];
+        let mut iter = iterable.iter().peekmore();
+
+        iter.advance_view();
+        let second = iter.peek().unwrap();
+        assert_eq!(second, &&2);
+
+        let consume_first = iter.next().unwrap();
+        assert_eq!(consume_first, &1);
+
+        let count = iter.count();
+        assert_eq!(count, 2);
     }
 }
