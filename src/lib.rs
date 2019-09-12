@@ -369,8 +369,11 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// Fills the queue up to the needle.
     #[inline]
     fn fill_queue(&mut self) {
-        if self.queue.len() <= self.needle {
-            for _ in self.queue.len()..=self.needle {
+        let stored_elements = self.queue.len();
+        let required_elements = self.needle;
+
+        if stored_elements <= required_elements {
+            for _ in stored_elements..=required_elements {
                 self.push_next_to_queue()
             }
         }
