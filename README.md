@@ -96,7 +96,8 @@ assert_eq!(j, Some(&&1));
 -----     -----      -----     -----
   ^
   i, j
-  returns Some(&A)
+
+peek() => Some(&&1)
 
 ```
 
@@ -135,7 +136,10 @@ assert_eq!(iterator.peek(), Some(&&2));
 -----     -----      -----     -----
   ^         ^
   i         j
-           returns Some(&B)
+
+          peek() => Some(&&2)
+          peek() => Some(&&2)
+          peek() => Some(&&2)  
 ```
 
 
@@ -153,7 +157,8 @@ assert_eq!(i, Some(&1));
 -----     -----      -----     -----
             ^
             i, j
-returns Some(A)
+
+next() => Some(&1)
 ```
 
 * call `next()`.
@@ -185,7 +190,10 @@ assert_eq!(j, Some(&&3));
 -----     -----      -----     -----
                        ^
                        i, j
-          returns Some(B)
+
+          peek() => Some(&&2)
+          next() => Some(&2)
+                    peek() => Some(&&3)
 ```
 
 * Consume more elements by calling `next()` until we reach `None`:
@@ -215,8 +223,11 @@ assert_eq!(i, None);
                                            ^
                                            i, j
                       
-                      returns Some(C)
-                                 returns Some(D)
+                      next() => Some(&3)
+                                peek() => Some(&&4)
+                                next() => Some(&4)
+                                         peek() => None
+                                         next() => None
 ```
 
 Experimental.
