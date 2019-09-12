@@ -332,11 +332,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// ```
     /// [`core::iter::Peekable::peek`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html#method.peek
     pub fn peek(&mut self) -> Option<&I::Item> {
-        if self.queue.len() <= self.needle {
-            for _ in self.queue.len()..=self.needle {
-                self.push_next_to_queue()
-            }
-        }
+        self.fill_queue();
         self.queue.get(self.needle).and_then(|v| v.as_ref())
     }
 
@@ -348,18 +344,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Advance the peekable view.
-    /// This does not advance the iterator itself. To advance the iterator, use `Iterator::next()`.
+    /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
+    ///
+    /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
     pub fn advance_view(&mut self) -> &mut PeekMoreIterator<I> {
-        match &self.needle {
-            0 if self.queue.is_empty() => {
-                self.push_next_to_queue();
-            }
-            pos if pos + 1 >= self.queue.len() => {
-                self.push_next_to_queue();
-            }
-            _ => {}
-        }
-
         self.increment_needle();
         self
     }
@@ -370,6 +358,16 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// [`peek`]: struct.PeekMoreIterator.html#method.peek
     pub fn reset_view(&mut self) {
         self.needle = 0;
+    }
+
+    /// Fills the queue up to the needle.
+    #[inline]
+    fn fill_queue(&mut self) {
+        if self.queue.len() <= self.needle {
+            for _ in self.queue.len()..=self.needle {
+                self.push_next_to_queue()
+            }
+        }
     }
 
     /// Consume the underlying iterator and push an element to the queue.
