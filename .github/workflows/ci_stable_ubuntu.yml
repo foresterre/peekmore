@@ -1,6 +1,6 @@
 # based on: https://github.com/BurntSushi/bstr/blob/master/.github/workflows/ci.yml
 # which is licensed under Apache License, Version 2.0 or MIT license
-name: "(ci (name :stable) (platform :ubuntu))"
+name: "GitHub Actions: CI"
 on:
   pull_request:
   push:
