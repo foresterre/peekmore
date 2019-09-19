@@ -1,0 +1,71 @@
+# based on: https://github.com/BurntSushi/bstr/blob/master/.github/workflows/ci.yml
+# which is licensed under Apache License, Version 2.0 or MIT license
+name: "GitHub Actions: CI"
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+jobs:
+  test:
+    name: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build: [pinned, stable, nightly, win-msvc, win-gnu]
+        include:
+          - build: pinned
+            os: ubuntu-18.04
+            rust: 1.36.0
+          - build: stable
+            os: ubuntu-latest
+            rust: stable
+          - build: nightly
+            os: ubuntu-latest
+            rust: nightly
+          - build: win-msvc
+            os: windows-latest
+            rust: stable
+          - build: win-gnu
+            os: windows-latest
+            rust: stable-x86_64-gnu
+
+    steps:
+      # checkout
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
+      # install: rust
+      - name: Install Rust
+        uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: ${{ matrix.rust }}
+      # build / doc / test
+      - run: cargo build --verbose
+      - run: cargo doc --verbose
+      - run: cargo test --verbose
+
+      # If we are on a nightly version, we also want to build + test with smallvec
+      - if: matrix.build == 'nightly'
+        run: cargo build --verbose --features smallvec
+      - if: matrix.build == 'nightly'
+        run: cargo test --verbose --features smallvec
+
+  rustfmt:
+    name: rustfmt
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
+      - name: Install Rust
+        uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: stable
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+      - name: Check formatting
+        run: |
+          cargo fmt -- --check
