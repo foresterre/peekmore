@@ -477,7 +477,7 @@ pub enum PeekMoreError {
     /// This error case will be returned if we try to move to an element, but it has already been
     /// consumed by the iterator.
     /// We can only peek at elements which haven't been consumed.
-    ElementHasBeenConsumed
+    ElementHasBeenConsumed,
 }
 
 #[cfg(test)]
