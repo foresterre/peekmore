@@ -8,7 +8,7 @@
 //! allows you to peek at the next element and no further. This crate aims to take that limitation
 //! away.
 //!
-//! **Peekable queue:**
+//! **A peek at how it works:**
 //!
 //! To enable peeking at multiple elements ahead of consuming a next element, the iterator uses a
 //! traversable queue which holds the elements which you can peek at, but have not been
@@ -18,6 +18,12 @@
 //! the stack for a limited amount of elements and will only allocate on the heap if this maximum
 //! amount of elements is reached. SmallVec support for `no_std` is experimental and currently
 //! [requires] a nightly compiler.
+//!
+//!
+//! **Illustrated example:**
+//!
+//! An illustrated example can be found at the [`PeekMoreIterator::peek`] documentation.
+//!
 //!
 //! **Usage example:**
 //!
@@ -35,52 +41,48 @@
 //! let v1c = iter.next();
 //! assert_eq!(v1c, Some(&1));
 //!
-//! // Peek at the second element (the element in our peek view also moved to the second element,
+//! // Peek at the second element (the element our cursor points at also moved to the second element,
 //! // since the first element was consumed.)
 //! let v2 = iter.peek();
 //! assert_eq!(v2, Some(&&2));
 //!
-//! // Advance the peek view. The peek view will now be at the third element.
+//! // Advance the cursor. The cursor will now point to the third element.
 //! let _ = iter.advance_view();
 //!
 //! // Check that it is indeed at the third element.
 //! let v3 = iter.peek();
 //! assert_eq!(v3, Some(&&3));
 //!
-//! // Reset our peek view to the second element (since the first element has been consumed).
-//! // It is the first non-consumed element.
+//! // Reset the position the cursor points at. The cursor will point to the first unconsumed element
+//! // again.
 //! iter.reset_view();
 //!
 //! // Check that we are indeed at the second element again.
 //! let v2 = iter.peek();
 //! assert_eq!(v2, Some(&&2));
 //!
-//! // Shift the peek view to the right twice by chaining the advance_view method.
+//! // Shift the position of the cursor to the right twice by chaining the advance_view method.
 //! let _ = iter.advance_view().advance_view();
 //!
-//! // Verify that the peek view is indeed at the fourth element.
+//! // Verify that the cursor indeed points at the fourth element.
 //! let v4 = iter.peek();
 //! assert_eq!(v4, Some(&&4));
 //!
-//! // Reset the view again (.
+//! // Reset the position which the cursor points at again.
 //! iter.reset_view();
 //!
-//! // We can also shift the peek view and peek with a single operation.
+//! // We can also advance the cursor and peek with a single operation.
 //! let v3 = iter.peek_next();
 //! assert_eq!(v3, Some(&&3));
 //! ```
 //!
-//! **Illustrated example:**
-//!
-//! An illustrated example can be found at the [`PeekMoreIterator::peek`] documentation.
 //!
 //! [`Peekable`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html
 //! [`PeekMoreIterator::peek`]: struct.PeekMoreIterator.html#method.peek
 //! [requires]: https://github.com/servo/rust-smallvec/issues/160
 
 /// We do need to allocate to save and store elements which are in the future compared to our last
-/// iterator element. Perhaps in the future we could optimize this slightly by using the stack for
-/// a limited amount of elements.
+/// iterator element. By default a Vec is used, but SmallVec is optionally also available.
 extern crate alloc;
 
 use core::iter::FusedIterator;
@@ -93,7 +95,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 
-/// Trait which allows one to create an iterator which allows us to peek multiple times forward.
+/// Trait which allows you to create an iterator which allows us to peek at any unconsumed element.
 pub trait PeekMore: Iterator + Sized {
     /// Create an iterator where we can look (peek) forward multiple times from an existing iterator.
     fn peekmore(self) -> PeekMoreIterator<Self>;
@@ -110,7 +112,7 @@ impl<I: Iterator> PeekMore for I {
             #[cfg(feature = "smallvec")]
             queue: SmallVec::new(),
 
-            needle: 0usize,
+            cursor: 0usize,
         }
     }
 }
@@ -122,7 +124,7 @@ const DEFAULT_STACK_SIZE: usize = 256;
 
 /// This iterator makes it possible to peek multiple times without consuming a value.
 /// In reality the underlying iterator will be consumed, but the values will be stored in a local
-/// vector. This vector allows us to shift to visible element (the 'view').
+/// queue. This queue allows us to move around unconsumed elements (as far as the iterator is concerned).
 #[derive(Clone, Debug)]
 pub struct PeekMoreIterator<I: Iterator> {
     /// Inner iterator. Consumption of this inner iterator does not represent consumption of the
@@ -130,33 +132,36 @@ pub struct PeekMoreIterator<I: Iterator> {
     iterator: I,
 
     /// The queue represent the items of our iterator which have not been consumed, but have been
-    /// prepared to view ('peek') without consuming them. Once an element is consumed, we can no longer
-    /// view an item in the queue.
+    /// prepared to view ('peek' at) without consuming them. Once an element has been consumed by
+    /// the iterator, it is no longer possible to peek at it either (and will be removed from the
+    /// queue).
     #[cfg(not(feature = "smallvec"))]
     queue: Vec<Option<I::Item>>,
     #[cfg(feature = "smallvec")]
     queue: SmallVec<[Option<I::Item>; DEFAULT_STACK_SIZE]>,
 
-    /// The needle helps us determine which item we currently have in view.
-    /// Within these docs, it is also sometimes known as the peek view, peek view handle and peek view
-    /// window.
-    /// If the needle is 0, we have not advanced (or have reset) our peeking window, and
+    /// The cursor helps us determine which item we currently have in view.
+    ///
+    /// If the cursor is 0, we have not advanced (or have reset) our peeking window, and
     /// it will point to the equivalent element as what [`core::iter::Peekable::peek`] would point to.  
     ///
     /// [`core::iter::Peekable::peek`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html#method.peek
-    needle: usize,
+    cursor: usize,
 }
 
 impl<I: Iterator> PeekMoreIterator<I> {
-    /// Get the reference of our current peek view window.
-    /// Note that `peek()` will always return a reference to the element where our current peek view
-    /// handle points to.
-    /// If we haven't advanced our peek view window, that will be the same element as the one next()
-    /// returns, but if we have advanced our peek view, it will be the element we advanced to instead.
+    /// Get a reference to the element where the cursor currently points at (if such element exists).
+    /// Sometimes we also call this the current 'view'.
+    ///
+    /// If we haven't advanced our cursor, that will be the same element as the one `next()` would
+    /// return, but if we have moved our cursor, it will be the element we moved to instead.
+    /// Note that the cursor can't ever point at an element (which existed) before the first
+    /// unconsumed element within the iterator. In a sense the cursor moves independently within the
+    /// iterator. But it will always stick to unconsumed elements.
     ///
     /// The following illustration aims to show how `peek()` behaves. `i` represents the position
     /// of the iterator (i.e. the next value that will be returned if `next()` is called) and `j`
-    /// represents the position of the current peek view (i.e. the current element referenced if
+    /// represents the position of the cursor (i.e. the current element referenced if
     /// `peek()` is called).
     /// In example code next to the illustrations, the first element `1` is analogous to `A`,
     /// `2` to `B` etc.
@@ -166,7 +171,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// ```rust
     /// use peekmore::PeekMore;
     ///
-    /// // initialize our iterator
+    /// // Initialize our iterator.
     /// let iterable = [1, 2, 3, 4];
     /// let mut iterator = iterable.iter().peekmore();
     /// ```
@@ -219,7 +224,8 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// * call `peek()`
     ///   _or_ `peek(); peek()`  _or_ `peek(); peek(); peek()` etc.
     ///
-    /// (The reference returned by `peek()` will not change, similar to the behaviour of [`core::iter::Peekable::peek`]
+    /// (The reference returned by `peek()` will not change, similar to the behaviour of
+    /// [`core::iter::Peekable::peek`].
     ///      In order to move to the next peekable element, we need to advance our view.)
     ///
     /// ```rust
@@ -230,7 +236,8 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// let j = iterator.peek();
     /// assert_eq!(j, Some(&&2));
     ///
-    /// // calling peek() multiple times doesn't shift our peek view; a reference to the same element will be returned each call.
+    /// // Calling peek() multiple times doesn't shift the position of our cursor;
+    /// // a reference to the same element will be returned each call.
     /// assert_eq!(iterator.peek(), Some(&&2));
     /// assert_eq!(iterator.peek(), Some(&&2));
     /// ```
@@ -246,7 +253,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     ///
     /// * call `next()`
-    ///     (i.e. advance the iterator; the first element will be consumed)
+    ///     (i.e. advance the iterator; the element represented by A will be consumed)
     ///
     /// ```rust
     /// # use peekmore::PeekMore;
@@ -259,7 +266,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// ```txt
     /// -----     -----      -----     -----
-    /// | A | --> | B |  --> | C | --> | D | --> None --> None --> ...
+    /// | A |     | B |  --> | C | --> | D | --> None --> None --> ...
     /// -----     -----      -----     -----
     ///             ^
     ///             i, j
@@ -267,9 +274,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// ```
     ///
     /// * call `next()`.
-    ///     (i.e. advance the iterator again; we'll see that the current peek view shifts with the
-    ///      next iterator position if the iterator consumes elements where our peek view pointed at
-    ///      previously (`j < i`))
+    ///     (i.e. advance the iterator again; we'll see that the cursor position shifts to the
+    ///      next iterator position if the iterator consumes elements where our cursor pointed at
+    ///      previously (that is if `j < i`))
     ///
     ///
     /// ```rust
@@ -278,16 +285,16 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// # let mut iterator = iterable.iter().peekmore();
     /// # let iter = iterator.advance_view();
     /// # let _ = iterator.next();
-    /// // show that the peek view still is at element 2.
+    /// // Show that the cursor still points at the second element.
     /// let j = iterator.peek();
     /// assert_eq!(j, Some(&&2));
     ///
-    /// // consume the second element
+    /// // Consume the second element.
     /// let i = iterator.next();
     /// assert_eq!(i, Some(&2));
     ///
-    /// // while our peek view was at positioned at the second element. it is now at the third,
-    /// // since the iterator consumed the second.
+    /// // Our cursor previously pointed at the element represented by B. Since that element has
+    /// // been consumed, the cursor shifts to the next unconsumed element: C.
     /// let j = iterator.peek();
     /// assert_eq!(j, Some(&&3));
     ///
@@ -296,7 +303,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// ```txt
     /// -----     -----      -----     -----
-    /// | A | --> | B |  --> | C | --> | D | --> None --> None --> ...
+    /// | A |     | B |      | C | --> | D | --> None --> None --> ...
     /// -----     -----      -----     -----
     ///                        ^
     ///                        i, j
@@ -336,35 +343,40 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     pub fn peek(&mut self) -> Option<&I::Item> {
         self.fill_queue();
-        self.queue.get(self.needle).and_then(|v| v.as_ref())
+        self.queue.get(self.cursor).and_then(|v| v.as_ref())
     }
 
-    // convenient as we don't have to re-assign our mutable borrow on the 'user' side.
-    /// Advance the view to the next element and return a reference to its value.
+    // Convenient as we don't have to re-assign our mutable borrow on the 'user' side.
+    /// Advance the cursor to the next element and return a reference to that value.
     #[inline]
     pub fn peek_next(&mut self) -> Option<&I::Item> {
         let this = self.advance_view();
         this.peek()
     }
 
-    /// Try to peek at a previous element. If no such element exists (i.e. our peek view is already
-    /// at the same point as the next iterator element), it will return [`Element::Consumed`].
-    /// If a previous element does exist, [`Element::Peekable`] is returned.
+    /// Try to peek at a previous element. If no such element exists (i.e. our cursor is already
+    /// at the same point as the next iterator element), it will return an `Err` result containing a
+    /// [`PeekMoreError::ElementHasBeenConsumed`].
+    /// If a previous element does exist, an option wrapped in an `Ok` result will be returned.
     ///
-    /// [`Element::Consumed`]: enum.Element.html#variant.Consumed
-    /// [`Element::Peekable`]: enum.Element.html#variant.Peekable
+    ///  `Result` is re
+    ///
+    /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
     #[inline]
-    pub fn peek_previous(&mut self) -> Element<Option<&I::Item>> {
-        if self.needle >= 1 {
+    pub fn peek_previous(&mut self) -> Result<Option<&I::Item>, PeekMoreError> {
+        if self.cursor >= 1 {
             self.decrement_needle();
-            Element::Peekable(self.peek())
+            Ok(self.peek())
         } else {
-            Element::Consumed
+            Err(PeekMoreError::ElementHasBeenConsumed)
         }
     }
 
-    /// Advance the peekable view.
+    /// Move the cursor to the next peekable element.
     /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
+    ///
+    /// A mutable reference to the iterator is returned.
+    /// This operation can be chained.
     ///
     /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
@@ -373,20 +385,20 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self
     }
 
-    /// Reset the view. If we call [`peek`] just after a reset,
+    /// Reset the position of the cursor. If we call [`peek`] just after a reset,
     /// it will return a reference to the first element again.
     ///
     /// [`peek`]: struct.PeekMoreIterator.html#method.peek
     #[inline]
     pub fn reset_view(&mut self) {
-        self.needle = 0;
+        self.cursor = 0;
     }
 
-    /// Fills the queue up to the needle.
+    /// Fills the queue up to (including) the cursor.
     #[inline]
     fn fill_queue(&mut self) {
         let stored_elements = self.queue.len();
-        let required_elements = self.needle;
+        let required_elements = self.cursor;
 
         if stored_elements <= required_elements {
             for _ in stored_elements..=required_elements {
@@ -402,28 +414,32 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.queue.push(item);
     }
 
-    /// Increment the needle which points to the current peekable item.
-    /// Note: if the needle is [core::usize::MAX], it will not increment any further.
+    /// Increment the cursor which points to the current peekable item.
+    /// Note: if the cursor is [core::usize::MAX], it will not increment any further.
+    ///
+    /// [core::usize::MAX]: https://doc.rust-lang.org/core/usize/constant.MAX.html
     #[inline]
     fn increment_needle(&mut self) {
         // do not overflow
-        if self.needle < core::usize::MAX {
-            self.needle += 1;
+        if self.cursor < core::usize::MAX {
+            self.cursor += 1;
         }
     }
 
-    /// Decrement the needle which points to the current peekable item.
-    /// Note: if the needle is [core::usize::MIN], it will not decrement any further.
+    /// Decrement the cursor which points to the current peekable item.
+    /// Note: if the cursor is [core::usize::MIN], it will not decrement any further.
+    ///
+    /// [core::usize::MIN]: https://doc.rust-lang.org/core/usize/constant.MIN.html
     #[inline]
     fn decrement_needle(&mut self) {
-        if self.needle > core::usize::MIN {
-            self.needle -= 1;
+        if self.cursor > core::usize::MIN {
+            self.cursor -= 1;
         }
     }
 
     #[doc(hidden)]
     pub fn needle_position(&self) -> usize {
-        self.needle
+        self.cursor
     }
 }
 
@@ -453,29 +469,15 @@ impl<I: ExactSizeIterator> ExactSizeIterator for PeekMoreIterator<I> {}
 /// [`FusedIterator`]: https://doc.rust-lang.org/core/iter/trait.FusedIterator.html
 impl<I: FusedIterator> FusedIterator for PeekMoreIterator<I> {}
 
-/// Type which communicates that no element can exist (because it has been consumed).
-/// Created to differentiate from the Option::None which communicates that an iterator is finished.
+/// This enumeration provides errors which represent lack of success of the [`PeekMoreIterator`].
+///
+/// [`PeekMoreIterator`]: struct.PeekMoreIterator.html
 #[derive(Debug, Eq, PartialEq)]
-pub enum Element<T> {
-    /// An element which we can peek at exists.
-    Peekable(T),
-
-    /// Element has been consumed, thus is unavailable to peeking.
-    Consumed,
-}
-
-impl<T> Element<T> {
-    /// Release the power of the Option type.
-    ///
-    /// Mapping:
-    /// - Peekable(T) maps to Some(T).
-    /// - Consumed maps to None.
-    pub fn into_option(self) -> Option<T> {
-        match self {
-            Element::Peekable(k) => Some(k),
-            Element::Consumed => None,
-        }
-    }
+pub enum PeekMoreError {
+    /// This error case will be returned if we try to move to an element, but it has already been
+    /// consumed by the iterator.
+    /// We can only peek at elements which haven't been consumed.
+    ElementHasBeenConsumed
 }
 
 #[cfg(test)]
@@ -751,15 +753,15 @@ mod tests {
         assert_eq!(value, &&3);
 
         let peek = iter.peek_previous(); // 2
-        assert_eq!(peek, Element::Peekable(Some(&&2)));
+        assert_eq!(peek.unwrap(), Some(&&2));
         assert_eq!(iter.needle_position(), 1);
 
         let peek = iter.peek_previous(); // 1
-        assert_eq!(peek, Element::Peekable(Some(&&1)));
+        assert_eq!(peek.unwrap(), Some(&&1));
         assert_eq!(iter.needle_position(), 0);
 
         let peek = iter.peek_previous();
-        assert_eq!(peek, Element::Consumed);
+        assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
         assert_eq!(iter.needle_position(), 0);
     }
 
@@ -785,47 +787,23 @@ mod tests {
         assert_eq!(iter.needle_position(), 3);
 
         let peek = iter.peek_previous(); // None (2)
-        assert_eq!(peek, Element::Peekable(None));
+        assert_eq!(peek.unwrap(), None);
         assert_eq!(iter.needle_position(), 2);
 
         let peek = iter.peek_previous(); // None (1)
-        assert_eq!(peek, Element::Peekable(None));
+        assert_eq!(peek.unwrap(), None);
         assert_eq!(iter.needle_position(), 1);
 
         let peek = iter.peek_previous(); // 1
-        assert_eq!(peek, Element::Peekable(Some(&&1)));
+        assert_eq!(peek.unwrap(), Some(&&1));
         assert_eq!(iter.needle_position(), 0);
 
         let peek = iter.peek_previous();
-        assert_eq!(peek, Element::Consumed);
+        assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
         assert_eq!(iter.needle_position(), 0);
 
         let peek = iter.peek_previous();
-        assert_eq!(peek, Element::Consumed);
+        assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
         assert_eq!(iter.needle_position(), 0);
     }
-}
-
-#[cfg(test)]
-mod tests_prior_element {
-    use super::*;
-
-    #[test]
-    fn from_prior_element_into_some() {
-        type Int = i32;
-        let prior: Element<Int> = Element::Peekable(1);
-        let option: Option<Int> = prior.into_option();
-
-        assert_eq!(option, Some(1i32));
-    }
-
-    #[test]
-    fn from_prior_element_into_none() {
-        type Int = i32;
-        let prior: Element<Int> = Element::Consumed;
-        let option: Option<Int> = prior.into_option();
-
-        assert_eq!(option, None);
-    }
-
 }
