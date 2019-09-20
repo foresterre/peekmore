@@ -403,6 +403,47 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
+    /// Move the cursor `n` elements forward.
+    /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
+    ///
+    /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
+    #[inline]
+    pub fn move_forward(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+        self.cursor += n;
+        self
+    }
+
+    /// Move the cursor `n` elements backward. If there aren't `n` unconsumed elements prior to the
+    /// cursor it will return an error. In case of an error, the cursor will stay at the position
+    /// it pointed at prior to calling this method.
+    ///
+    /// If you want to reset the cursor to the first unconsumed element even if there aren't `n`
+    /// unconsumed elements before the position the cursor points at, you can use the
+    /// [`move_backward_or_reset`] method instead.
+    ///
+    /// [`move_backward_or_reset`]: struct.PeekMoreIterator.html#method.move_backward_or_reset
+    #[inline]
+    pub fn move_backward(&mut self, n: usize) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
+        if self.cursor < n {
+            Err(PeekMoreError::ElementHasBeenConsumed)
+        } else {
+            self.cursor -= n;
+            Ok(self)
+        }
+    }
+    /// Move the cursor `n` elements backward or reset to the first non consumed element if
+    /// we can't move the cursor `n` elements to the back.
+    #[inline]
+    pub fn move_backward_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+        if self.cursor < n {
+            self.reset_view();
+        } else {
+            self.cursor -= n;
+        }
+
+        self
+    }
+
     /// Reset the position of the cursor. If we call [`peek`] just after a reset,
     /// it will return a reference to the first element again.
     ///
@@ -872,6 +913,130 @@ mod tests {
 
         let peek = iter.peek_previous();
         assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_forward() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let _ = iter.move_forward(3);
+        let peek = iter.peek();
+        assert_eq!(peek, None);
+        assert_eq!(iter.needle_position(), 6);
+    }
+
+    #[test]
+    fn check_move_backward() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let result = iter.move_backward(2);
+        assert!(result.is_ok());
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&2));
+        assert_eq!(iter.needle_position(), 1);
+
+        let result = iter.move_backward(1);
+        assert!(result.is_ok());
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+
+        let result = iter.move_backward(1);
+        assert!(result.is_err());
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_backward_beyond_consumed_verify_cursor_position() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let result = iter.move_backward(5);
+        assert!(result.is_err());
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+    }
+
+    #[test]
+    fn check_move_backward_or_reset() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let _ = iter.move_backward_or_reset(2);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&2));
+        assert_eq!(iter.needle_position(), 1);
+
+        let _ = iter.move_backward_or_reset(1);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+
+        let _ = iter.move_backward_or_reset(1);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_backward_or_reset_beyond_consumed_verify_cursor_position() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let _ = iter.move_backward_or_reset(5);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_backward_or_reset_empty() {
+        let iterable = "".chars();
+
+        let mut iter = iterable.peekmore();
+
+        assert_eq!(iter.peek(), None);
+        assert_eq!(iter.needle_position(), 0);
+
+        let _ = iter.move_backward_or_reset(5);
+
+        assert_eq!(iter.peek(), None);
         assert_eq!(iter.needle_position(), 0);
     }
 }
