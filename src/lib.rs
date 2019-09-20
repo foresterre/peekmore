@@ -372,6 +372,43 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
+    /// Move the cursor `n` steps forward and peek at the element the cursor then points to.
+    #[inline]
+    pub fn peek_forward(&mut self, n: usize) -> Option<&I::Item> {
+        let this = self.move_forward(n);
+        this.peek()
+    }
+
+    /// Move the cursor `n` steps backward and peek at the element the cursor then points to.
+    ///
+    /// If there aren't `n` elements prior to the element the cursor currently points at a
+    /// [`PeekMoreError::ElementHasBeenConsumed`] is returned instead.
+    /// The cursor will then stay at the position it was prior to calling this method.
+    ///
+    /// If you want to peek at the first unconsumed element instead of returning with an error, you
+    /// can use the [`peek_backward_or_first`] method instead of this one.
+    ///
+    /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
+    /// [`peek_backward_or_first`]: struct.PeekMoreIterator.html#method.peek_backward_or_first
+    #[inline]
+    pub fn peek_backward(&mut self, n: usize) -> Result<Option<&I::Item>, PeekMoreError> {
+        let _ = self.move_backward(n)?;
+
+        Ok(self.peek())
+    }
+
+    /// Move the cursor `n` steps backward and peek at the element the cursor then points to, or
+    /// if there aren't `n` elements prior to the element the cursor currently points to, peek at
+    /// the first unconsumed element instead.
+    #[inline]
+    pub fn peek_backward_or_first(&mut self, n: usize) -> Option<&I::Item> {
+        if self.move_backward(n).is_err() {
+            self.reset_view();
+        }
+
+        self.peek()
+    }
+
     /// Move the cursor to the next peekable element.
     /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
     ///
@@ -1037,6 +1074,98 @@ mod tests {
         let _ = iter.move_backward_or_reset(5);
 
         assert_eq!(iter.peek(), None);
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_peek_forward() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let peek = iter.peek_forward(3);
+
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let peek = iter.peek_forward(3);
+        assert_eq!(peek, None);
+        assert_eq!(iter.needle_position(), 6);
+    }
+
+    #[test]
+    fn check_peek_backward() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let result = iter.peek_backward(2);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(&&2));
+        assert_eq!(iter.needle_position(), 1);
+
+        let result = iter.peek_backward(1);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+
+        let result = iter.peek_backward(1);
+        assert!(result.is_err());
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_peek_backward_beyond_consumed_verify_cursor_position() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let result = iter.peek_backward(5);
+        assert!(result.is_err());
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+    }
+
+    #[test]
+    fn check_peek_backward_or_first_beyond_consumed_verify_cursor_position() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let peek = iter.peek_backward_or_first(5);
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_peek_backward_or_first_empty() {
+        let iterable = "".chars();
+
+        let mut iter = iterable.peekmore();
+
+        assert_eq!(iter.peek(), None);
+        assert_eq!(iter.needle_position(), 0);
+
+        let peek = iter.peek_backward_or_first(5);
+
+        assert_eq!(peek, None);
         assert_eq!(iter.needle_position(), 0);
     }
 }
