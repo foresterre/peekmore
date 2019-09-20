@@ -413,20 +413,35 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self
     }
 
-    /// Move the cursor `n` elements backward.
+    /// Move the cursor `n` elements backward. If there aren't `n` unconsumed elements prior to the
+    /// cursor it will return an error. In case of an error, the cursor will stay at the position
+    /// it pointed at prior to calling this method.
     ///
-    /// fixme: If during moving backward we are at the first element again; we return an error.
-    /// fixme: But do we still move back to the first element, or do we return an error and stay at
-    ///        the position we had before this method was called.
+    /// If you want to reset the cursor to the first unconsumed element even if there aren't `n`
+    /// unconsumed elements before the position the cursor points at, you can use the
+    /// [`move_backward_or_reset`] method instead.
+    ///
+    /// [`move_backward_or_reset`]: struct.PeekMoreIterator.html#method.move_backward_or_reset
     #[inline]
     pub fn move_backward(&mut self, n: usize) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
         if self.cursor < n {
-            // self.reset_view(); // fixme: do we do this?
             Err(PeekMoreError::ElementHasBeenConsumed)
         } else {
             self.cursor -= n;
             Ok(self)
         }
+    }
+    /// Move the cursor `n` elements backward or reset to the first non consumed element if
+    /// we can't move the cursor `n` elements to the back.
+    #[inline]
+    pub fn move_backward_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+        if self.cursor < n {
+            self.reset_view();
+        } else {
+            self.cursor -= n;
+        }
+
+        self
     }
 
     /// Reset the position of the cursor. If we call [`peek`] just after a reset,
@@ -959,11 +974,69 @@ mod tests {
         assert_eq!(peek, Some(&&4));
         assert_eq!(iter.needle_position(), 3);
 
-        // fixme: currently unmoved if not possible, but should it reset?
         let result = iter.move_backward(5);
         assert!(result.is_err());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
         assert_eq!(iter.needle_position(), 3);
+    }
+
+    #[test]
+    fn check_move_backward_or_reset() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let _ = iter.move_backward_or_reset(2);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&2));
+        assert_eq!(iter.needle_position(), 1);
+
+        let _ = iter.move_backward_or_reset(1);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+
+        let _ = iter.move_backward_or_reset(1);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_backward_or_reset_beyond_consumed_verify_cursor_position() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward(3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
+
+        let _ = iter.move_backward_or_reset(5);
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_backward_or_reset_empty() {
+        let iterable = "".chars();
+
+        let mut iter = iterable.peekmore();
+
+        assert_eq!(iter.peek(), None);
+        assert_eq!(iter.needle_position(), 0);
+
+        let _ = iter.move_backward_or_reset(5);
+
+        assert_eq!(iter.peek(), None);
+        assert_eq!(iter.needle_position(), 0);
     }
 }
