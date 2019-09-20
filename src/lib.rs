@@ -381,7 +381,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     /// Move the cursor `n` steps backward and peek at the element the cursor then points to.
     ///
-    /// If there aren't `n` elements prior to the element the cursor currently points at a
+    /// If there aren't `n` elements prior to the element the cursor currently points at, a
     /// [`PeekMoreError::ElementHasBeenConsumed`] is returned instead.
     /// The cursor will then stay at the position it was prior to calling this method.
     ///
