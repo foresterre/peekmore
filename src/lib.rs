@@ -450,6 +450,21 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self
     }
 
+    /// Moves the cursor forward for as many elements as a predicate is true.
+    #[inline]
+    pub fn move_forward_while<P: Fn(Option<&I::Item>)->bool>(&mut self, predicate: P) -> &mut PeekMoreIterator<I> {
+        let view = self.peek();
+
+        if predicate(view) {
+            self.increment_needle();
+            self.move_forward_while(predicate)
+        } else {
+            self.decrement_needle();
+            self
+        }
+    }
+
+
     /// Move the cursor `n` elements backward. If there aren't `n` unconsumed elements prior to the
     /// cursor it will return an error. In case of an error, the cursor will stay at the position
     /// it pointed at prior to calling this method.
@@ -468,6 +483,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
             Ok(self)
         }
     }
+
     /// Move the cursor `n` elements backward or reset to the first non consumed element if
     /// we can't move the cursor `n` elements to the back.
     #[inline]
@@ -480,6 +496,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
         self
     }
+
 
     /// Reset the position of the cursor. If we call [`peek`] just after a reset,
     /// it will return a reference to the first element again.
@@ -1167,5 +1184,51 @@ mod tests {
 
         assert_eq!(peek, None);
         assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_forward_while() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward_while(|i| {
+            **i.unwrap() != 3
+        });
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&2));
+        assert_eq!(iter.needle_position(), 1);
+    }
+
+    #[test]
+    fn check_move_forward_while_empty() {
+        let iterable: [i32; 0] = [];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward_while(|i| {
+            if let Some(i) = i {
+                **i != 3
+            } else {
+                false
+            }
+        });
+
+        let peek = iter.peek();
+        assert_eq!(peek, None);
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_forward_while_some() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        let _ = iter.move_forward_while(|i| {
+            i.is_some()
+        });
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&4));
+        assert_eq!(iter.needle_position(), 3);
     }
 }
