@@ -452,7 +452,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     /// Moves the cursor forward for as many elements as a predicate is true.
     #[inline]
-    pub fn move_forward_while<P: Fn(Option<&I::Item>)->bool>(&mut self, predicate: P) -> &mut PeekMoreIterator<I> {
+    pub fn move_forward_while<P: Fn(Option<&I::Item>) -> bool>(
+        &mut self,
+        predicate: P,
+    ) -> &mut PeekMoreIterator<I> {
         let view = self.peek();
 
         if predicate(view) {
@@ -463,7 +466,6 @@ impl<I: Iterator> PeekMoreIterator<I> {
             self
         }
     }
-
 
     /// Move the cursor `n` elements backward. If there aren't `n` unconsumed elements prior to the
     /// cursor it will return an error. In case of an error, the cursor will stay at the position
@@ -496,7 +498,6 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
         self
     }
-
 
     /// Reset the position of the cursor. If we call [`peek`] just after a reset,
     /// it will return a reference to the first element again.
@@ -1191,9 +1192,7 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward_while(|i| {
-            **i.unwrap() != 3
-        });
+        let _ = iter.move_forward_while(|i| **i.unwrap() != 3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&2));
@@ -1205,13 +1204,7 @@ mod tests {
         let iterable: [i32; 0] = [];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward_while(|i| {
-            if let Some(i) = i {
-                **i != 3
-            } else {
-                false
-            }
-        });
+        let _ = iter.move_forward_while(|i| if let Some(i) = i { **i != 3 } else { false });
 
         let peek = iter.peek();
         assert_eq!(peek, None);
@@ -1223,9 +1216,7 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward_while(|i| {
-            i.is_some()
-        });
+        let _ = iter.move_forward_while(|i| i.is_some());
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
