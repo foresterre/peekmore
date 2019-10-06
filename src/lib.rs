@@ -55,7 +55,7 @@
 //!
 //! // Reset the position the cursor points at. The cursor will point to the first unconsumed element
 //! // again.
-//! iter.reset_view();
+//! iter.reset_cursor();
 //!
 //! // Check that we are indeed at the second element again.
 //! let v2 = iter.peek();
@@ -69,7 +69,7 @@
 //! assert_eq!(v4, Some(&&4));
 //!
 //! // Reset the position which the cursor points at again.
-//! iter.reset_view();
+//! iter.reset_cursor();
 //!
 //! // We can also advance the cursor and peek with a single operation.
 //! let v3 = iter.peek_next();
@@ -403,7 +403,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     pub fn peek_backward_or_first(&mut self, n: usize) -> Option<&I::Item> {
         if self.move_backward(n).is_err() {
-            self.reset_view();
+            self.reset_cursor();
         }
 
         self.peek()
@@ -498,7 +498,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     pub fn move_backward_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         if self.cursor < n {
-            self.reset_view();
+            self.reset_cursor();
         } else {
             self.cursor -= n;
         }
@@ -511,6 +511,14 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn move_nth(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         self.cursor = n;
         self
+
+    /// Deprecated: use [`reset_cursor`] instead.
+    ///
+    /// [`reset_cursor`]: struct.PeekMoreIterator.html#method.reset_cursor
+    #[deprecated]
+    #[inline]
+    pub fn reset_view(&mut self) {
+        self.reset_cursor()
     }
 
     /// Reset the position of the cursor. If we call [`peek`] just after a reset,
@@ -518,7 +526,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`peek`]: struct.PeekMoreIterator.html#method.peek
     #[inline]
-    pub fn reset_view(&mut self) {
+    pub fn reset_cursor(&mut self) {
         self.cursor = 0;
     }
 
@@ -687,7 +695,7 @@ mod tests {
         let v2 = iter.peek_next();
         assert_eq!(v2, Some(&&2));
 
-        iter.reset_view();
+        iter.reset_cursor();
         let v1again = iter.peek();
         assert_eq!(v1again, Some(&&1));
 
@@ -762,7 +770,7 @@ mod tests {
         );
         assert_eq!(iter.peek_next(), None);
         assert_eq!(iter.next(), Some(core::char::from_digit(4, 10).unwrap()));
-        iter.reset_view();
+        iter.reset_cursor();
 
         assert_eq!(iter.peek(), Some(&core::char::from_digit(5, 10).unwrap()));
         assert_eq!(
@@ -797,7 +805,7 @@ mod tests {
         let v3 = iter.peek();
         assert_eq!(v3, Some(&&3));
 
-        iter.reset_view();
+        iter.reset_cursor();
 
         let v3 = iter.peek();
         assert_eq!(v3, Some(&&3));
