@@ -1,8 +1,6 @@
 #![no_std]
 #![deny(missing_docs)]
 
-#![cfg()]
-
 //! **Synopsis:**
 //!
 //! This crate introduces a multi-peekable iterator.
@@ -86,6 +84,27 @@
 /// We do need to allocate to save and store elements which are in the future compared to our last
 /// iterator element. By default a Vec is used, but SmallVec is optionally also available.
 extern crate alloc;
+
+/// Import std only when running doc tests without errors. Std will not be included outside of
+/// doctest based binaries.
+///
+/// See [rust#54010](https://github.com/rust-lang/rust/issues/54010) for the error thrown by `doctest`
+/// if no allocator is present (e.g. with just core/alloc).
+/// Note that `cfg(doctest)` requires Rust 1.40 ([tracking issue](https://github.com/rust-lang/rust/issues/62210)).
+/// As a result of the above, `doctest` is disabled on the CI for Rust versions below `1.40`.
+#[cfg(doctest)]
+extern crate std;
+
+/// Use the system allocator when running doc tests.
+///
+/// See [rust#54010](https://github.com/rust-lang/rust/issues/54010) for the error thrown by `doctest`
+/// if no allocator is present (e.g. with just core/alloc).
+/// Note that `cfg(doctest)` requires Rust 1.40 ([tracking issue](https://github.com/rust-lang/rust/issues/62210)).
+/// As a result of the above, `doctest` is disabled on the CI for Rust versions below `1.40`.
+#[cfg(doctest)]
+#[global_allocator]
+static A: std::alloc::System = std::alloc::System;
+
 
 use core::iter::FusedIterator;
 
