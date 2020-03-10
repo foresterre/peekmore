@@ -1,6 +1,8 @@
 #![no_std]
 #![deny(missing_docs)]
 
+#![cfg()]
+
 //! **Synopsis:**
 //!
 //! This crate introduces a multi-peekable iterator.
@@ -511,6 +513,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn move_nth(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         self.cursor = n;
         self
+    }
 
     /// Deprecated: use [`reset_cursor`] instead.
     ///
