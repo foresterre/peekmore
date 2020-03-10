@@ -105,7 +105,6 @@ extern crate std;
 #[global_allocator]
 static A: std::alloc::System = std::alloc::System;
 
-
 use core::iter::FusedIterator;
 
 /// We use a Vec to queue iterator elements if the smallvec feature is disabled.
