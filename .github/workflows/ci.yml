@@ -12,11 +12,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [pinned, stable, nightly, win-msvc, win-gnu]
+        build: [pinned, pinned_with_doctest, stable, nightly, win-msvc, win-gnu]
         include:
           - build: pinned
             os: ubuntu-18.04
             rust: 1.36.0
+          - build: pinned_with_doctest
+            os: ubuntu-18.04
+            rust: 1.40.0
           - build: stable
             os: ubuntu-latest
             rust: stable
@@ -43,7 +46,9 @@ jobs:
           rust-version: ${{ matrix.rust }}
       # build / doc / test
       - run: cargo build --verbose
-      - run: cargo doc --verbose
+      # don't run doc tests on pinned, since pinned is currently Rust 1.36, but cfg(doctest) requires Rust 1.40
+      - if: matrix.build != 'pinned'
+        run: cargo doc --verbose
       - run: cargo test --verbose
 
       # If we are on a nightly version, we also want to build + test with smallvec

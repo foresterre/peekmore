@@ -85,6 +85,26 @@
 /// iterator element. By default a Vec is used, but SmallVec is optionally also available.
 extern crate alloc;
 
+/// Import std only when running doc tests without errors. Std will not be included outside of
+/// doctest based binaries.
+///
+/// See [rust#54010](https://github.com/rust-lang/rust/issues/54010) for the error thrown by `doctest`
+/// if no allocator is present (e.g. with just core/alloc).
+/// Note that `cfg(doctest)` requires Rust 1.40 ([tracking issue](https://github.com/rust-lang/rust/issues/62210)).
+/// As a result of the above, `doctest` is disabled on the CI for Rust versions below `1.40`.
+#[cfg(doctest)]
+extern crate std;
+
+/// Use the system allocator when running doc tests.
+///
+/// See [rust#54010](https://github.com/rust-lang/rust/issues/54010) for the error thrown by `doctest`
+/// if no allocator is present (e.g. with just core/alloc).
+/// Note that `cfg(doctest)` requires Rust 1.40 ([tracking issue](https://github.com/rust-lang/rust/issues/62210)).
+/// As a result of the above, `doctest` is disabled on the CI for Rust versions below `1.40`.
+#[cfg(doctest)]
+#[global_allocator]
+static A: std::alloc::System = std::alloc::System;
+
 use core::iter::FusedIterator;
 
 /// We use a Vec to queue iterator elements if the smallvec feature is disabled.
@@ -342,7 +362,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// [`core::iter::Peekable::peek`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html#method.peek
     #[inline]
     pub fn peek(&mut self) -> Option<&I::Item> {
-        self.fill_queue();
+        self.fill_queue(self.cursor);
         self.queue.get(self.cursor).and_then(|v| v.as_ref())
     }
 
@@ -407,6 +427,13 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
 
         self.peek()
+    }
+
+    /// Peek at the nth element without moving the cursor.
+    #[inline]
+    pub fn peek_nth(&mut self, n: usize) -> Option<&I::Item> {
+        self.fill_queue(n);
+        self.queue.get(n).and_then(|v| v.as_ref())
     }
 
     /// Move the cursor to the next peekable element.
@@ -499,6 +526,13 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self
     }
 
+    /// Move the cursor to the n-th element of the queue.
+    #[inline]
+    pub fn move_nth(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+        self.cursor = n;
+        self
+    }
+
     /// Deprecated: use [`reset_cursor`] instead.
     ///
     /// [`reset_cursor`]: struct.PeekMoreIterator.html#method.reset_cursor
@@ -519,9 +553,8 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     /// Fills the queue up to (including) the cursor.
     #[inline]
-    fn fill_queue(&mut self) {
+    fn fill_queue(&mut self, required_elements: usize) {
         let stored_elements = self.queue.len();
-        let required_elements = self.cursor;
 
         if stored_elements <= required_elements {
             for _ in stored_elements..=required_elements {
@@ -1230,5 +1263,66 @@ mod tests {
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
         assert_eq!(iter.needle_position(), 3);
+    }
+
+    #[test]
+    fn check_peek_nth() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert_eq!(iter.peek_nth(0), Some(&&1));
+        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.peek_nth(1), Some(&&2));
+        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.peek_nth(2), Some(&&3));
+        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.peek_nth(3), Some(&&4));
+        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.peek_nth(4), None);
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_peek_nth_empty() {
+        let iterable: [i32; 0] = [];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert_eq!(iter.peek_nth(0), None);
+        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.peek_nth(1), None);
+        assert_eq!(iter.needle_position(), 0);
+    }
+
+    #[test]
+    fn check_move_nth() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        iter.move_nth(20);
+        assert_eq!(iter.peek_nth(0), Some(&&1));
+        assert_eq!(iter.needle_position(), 20);
+        assert_eq!(iter.peek(), None);
+
+        iter.move_nth(0);
+        assert_eq!(iter.peek(), Some(&&1));
+
+        iter.move_nth(3);
+        assert_eq!(iter.peek(), Some(&&4));
+    }
+
+    #[test]
+    fn check_move_nth_empty() {
+        let iterable: [i32; 0] = [];
+
+        let mut iter = iterable.iter().peekmore();
+
+        iter.move_nth(0);
+        assert_eq!(iter.needle_position(), 0);
+
+        iter.move_nth(10);
+        assert_eq!(iter.needle_position(), 10);
     }
 }
