@@ -1,5 +1,6 @@
 #![no_std]
 #![deny(missing_docs)]
+#![deny(clippy::all)]
 
 //! **Synopsis:**
 //!
@@ -47,7 +48,7 @@
 //! assert_eq!(v2, Some(&&2));
 //!
 //! // Advance the cursor. The cursor will now point to the third element.
-//! let _ = iter.move_next();
+//! let _ = iter.advance_cursor();
 //!
 //! // Check that it is indeed at the third element.
 //! let v3 = iter.peek();
@@ -62,7 +63,7 @@
 //! assert_eq!(v2, Some(&&2));
 //!
 //! // Shift the position of the cursor to the right twice by chaining the advance_view method.
-//! let _ = iter.move_next().move_next();
+//! let _ = iter.advance_cursor().advance_cursor();
 //!
 //! // Verify that the cursor indeed points at the fourth element.
 //! let v4 = iter.peek();
@@ -81,8 +82,7 @@
 //! [`PeekMoreIterator::peek`]: struct.PeekMoreIterator.html#method.peek
 //! [requires]: https://github.com/servo/rust-smallvec/issues/160
 
-/// We do need to allocate to save and store elements which are in the future compared to our last
-/// iterator element. By default a Vec is used, but SmallVec is optionally also available.
+/// We need to allocate elements which haven't been consumed by the PeekMore iterator.
 extern crate alloc;
 
 /// Import std only when running doc tests without errors. Std will not be included outside of
@@ -224,13 +224,13 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// ```
     ///
-    /// * call `advance_view()`
+    /// * call `advance_cursor()`
     ///
     /// ```rust
     /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
-    /// let iter = iterator.move_next();
+    /// let iter = iterator.advance_cursor();
     /// ```
     ///
     /// ```txt
@@ -252,7 +252,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
-    /// # let iter = iterator.move_next();
+    /// # let iter = iterator.advance_cursor();
     /// let j = iterator.peek();
     /// assert_eq!(j, Some(&&2));
     ///
@@ -279,7 +279,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
-    /// # let iter = iterator.move_next();
+    /// # let iter = iterator.advance_cursor();
     /// let i = iterator.next();
     /// assert_eq!(i, Some(&1));
     /// ```
@@ -303,7 +303,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
-    /// # let iter = iterator.move_next();
+    /// # let iter = iterator.advance_cursor();
     /// # let _ = iterator.next();
     /// // Show that the cursor still points at the second element.
     /// let j = iterator.peek();
@@ -336,7 +336,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// # use peekmore::PeekMore;
     /// # let iterable = [1, 2, 3, 4];
     /// # let mut iterator = iterable.iter().peekmore();
-    /// # let iter = iterator.move_next();
+    /// # let iter = iterator.advance_cursor();
     /// # let _ = iterator.next();
     /// # let j = iterator.peek();
     /// # assert_eq!(j, Some(&&2));
@@ -370,7 +370,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// Advance the cursor to the next element and return a reference to that value.
     #[inline]
     pub fn peek_next(&mut self) -> Option<&I::Item> {
-        let this = self.move_next();
+        let this = self.advance_cursor();
         this.peek()
     }
 
@@ -385,8 +385,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     pub fn peek_previous(&mut self) -> Result<Option<&I::Item>, PeekMoreError> {
         if self.cursor >= 1 {
-            self.decrement_needle();
-            Ok(self.peek())
+            self.move_cursor_back().map(|iter| iter.peek())
         } else {
             Err(PeekMoreError::ElementHasBeenConsumed)
         }
@@ -395,7 +394,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// Move the cursor `n` steps forward and peek at the element the cursor then points to.
     #[inline]
     pub fn peek_forward(&mut self, n: usize) -> Option<&I::Item> {
-        let this = self.move_forward(n);
+        let this = self.advance_cursor_by(n);
         this.peek()
     }
 
@@ -412,7 +411,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// [`peek_backward_or_first`]: struct.PeekMoreIterator.html#method.peek_backward_or_first
     #[inline]
     pub fn peek_backward(&mut self, n: usize) -> Result<Option<&I::Item>, PeekMoreError> {
-        let _ = self.move_backward(n)?;
+        let _ = self.move_cursor_back_by(n)?;
 
         Ok(self.peek())
     }
@@ -422,7 +421,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// the first unconsumed element instead.
     #[inline]
     pub fn peek_backward_or_first(&mut self, n: usize) -> Option<&I::Item> {
-        if self.move_backward(n).is_err() {
+        if self.move_cursor_back_by(n).is_err() {
             self.reset_cursor();
         }
 
@@ -444,27 +443,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
-    pub fn move_next(&mut self) -> &mut PeekMoreIterator<I> {
-        self.increment_needle();
+    pub fn advance_cursor(&mut self) -> &mut PeekMoreIterator<I> {
+        self.increment_cursor();
         self
-    }
-
-    /// Move the cursor to the previous peekable element.
-    /// If such element doesn't exist, returns a [`PeekMoreError::ElementHasBeenConsumed`] wrapped
-    /// in the `Err` variant of `Result`.
-    ///
-    /// If we can move to a previous element, a mutable reference to the iterator,
-    /// wrapped in the `Ok` variant of `Result` will be returned.
-    ///
-    /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
-    #[inline]
-    pub fn move_previous(&mut self) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
-        if self.cursor >= 1 {
-            self.decrement_needle();
-            Ok(self)
-        } else {
-            Err(PeekMoreError::ElementHasBeenConsumed)
-        }
     }
 
     /// Move the cursor `n` elements forward.
@@ -472,25 +453,42 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
-    pub fn move_forward(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+    pub fn advance_cursor_by(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         self.cursor += n;
         self
     }
 
     /// Moves the cursor forward for as many elements as a predicate is true.
     #[inline]
-    pub fn move_forward_while<P: Fn(Option<&I::Item>) -> bool>(
+    pub fn advance_cursor_while<P: Fn(Option<&I::Item>) -> bool>(
         &mut self,
         predicate: P,
     ) -> &mut PeekMoreIterator<I> {
         let view = self.peek();
 
         if predicate(view) {
-            self.increment_needle();
-            self.move_forward_while(predicate)
+            self.increment_cursor();
+            self.advance_cursor_while(predicate)
         } else {
-            self.decrement_needle();
+            self.decrement_cursor();
             self
+        }
+    }
+
+    /// Move the cursor to the previous peekable element.
+    /// If such an element doesn't exist, returns a [`PeekMoreError::ElementHasBeenConsumed`].
+    ///
+    /// If we can move to a previous element, a mutable reference to the iterator,
+    /// wrapped in the `Ok` variant of `Result` will be returned.
+    ///
+    /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
+    #[inline]
+    pub fn move_cursor_back(&mut self) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
+        if self.cursor >= 1 {
+            self.decrement_cursor();
+            Ok(self)
+        } else {
+            Err(PeekMoreError::ElementHasBeenConsumed)
         }
     }
 
@@ -504,7 +502,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`move_backward_or_reset`]: struct.PeekMoreIterator.html#method.move_backward_or_reset
     #[inline]
-    pub fn move_backward(&mut self, n: usize) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
+    pub fn move_cursor_back_by(&mut self, n: usize) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
         if self.cursor < n {
             Err(PeekMoreError::ElementHasBeenConsumed)
         } else {
@@ -516,7 +514,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// Move the cursor `n` elements backward or reset to the first non consumed element if
     /// we can't move the cursor `n` elements to the back.
     #[inline]
-    pub fn move_backward_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+    pub fn move_cursor_back_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         if self.cursor < n {
             self.reset_cursor();
         } else {
@@ -575,7 +573,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [core::usize::MAX]: https://doc.rust-lang.org/core/usize/constant.MAX.html
     #[inline]
-    fn increment_needle(&mut self) {
+    fn increment_cursor(&mut self) {
         // do not overflow
         if self.cursor < core::usize::MAX {
             self.cursor += 1;
@@ -587,14 +585,15 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [core::usize::MIN]: https://doc.rust-lang.org/core/usize/constant.MIN.html
     #[inline]
-    fn decrement_needle(&mut self) {
+    fn decrement_cursor(&mut self) {
         if self.cursor > core::usize::MIN {
             self.cursor -= 1;
         }
     }
 
     #[doc(hidden)]
-    pub fn needle_position(&self) -> usize {
+    #[cfg(test)]
+    fn cursor(&self) -> usize {
         self.cursor
     }
 }
@@ -609,7 +608,7 @@ impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
             self.queue.remove(0)
         };
 
-        self.decrement_needle();
+        self.decrement_cursor();
 
         res
     }
@@ -648,16 +647,16 @@ mod tests {
 
         assert_eq!(peek.peek(), Some(&&1));
 
-        let peek = peek.move_next();
+        let peek = peek.advance_cursor();
         assert_eq!(peek.peek(), Some(&&2));
 
-        let peek = peek.move_next();
+        let peek = peek.advance_cursor();
         assert_eq!(peek.peek(), Some(&&3));
 
-        let peek = peek.move_next();
+        let peek = peek.advance_cursor();
         assert_eq!(peek.peek(), Some(&&4));
 
-        let peek = peek.move_next();
+        let peek = peek.advance_cursor();
         assert_eq!(peek.peek(), None);
     }
 
@@ -669,16 +668,16 @@ mod tests {
 
         assert_eq!(iter.peek(), Some(&&1));
 
-        let v2 = iter.move_next().peek();
+        let v2 = iter.advance_cursor().peek();
         assert_eq!(v2, Some(&&2));
 
-        let v3 = iter.move_next().peek();
+        let v3 = iter.advance_cursor().peek();
         assert_eq!(v3, Some(&&3));
 
-        let v4 = iter.move_next().peek();
+        let v4 = iter.advance_cursor().peek();
         assert_eq!(v4, Some(&&4));
 
-        let v5 = iter.move_next().peek();
+        let v5 = iter.advance_cursor().peek();
         assert_eq!(v5, None);
     }
 
@@ -744,7 +743,7 @@ mod tests {
         let none = iter.peek_next();
         assert_eq!(none, None);
 
-        let iter = iter.move_next();
+        let iter = iter.advance_cursor();
         assert_eq!(iter.peek(), None);
         assert_eq!(iter.peek_next(), None);
     }
@@ -850,17 +849,17 @@ mod tests {
 
         let mut iter = iterable.iter().peekmore(); // j -> 1
 
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek(), Some(&&1));
 
-        iter.move_next(); // j -> 2
-        assert_eq!(iter.needle_position(), 1);
+        iter.advance_cursor(); // j -> 2
+        assert_eq!(iter.cursor(), 1);
 
-        iter.move_next(); // j -> 3
-        assert_eq!(iter.needle_position(), 2);
+        iter.advance_cursor(); // j -> 3
+        assert_eq!(iter.cursor(), 2);
 
-        iter.move_next(); // j -> 4
-        assert_eq!(iter.needle_position(), 3);
+        iter.advance_cursor(); // j -> 4
+        assert_eq!(iter.cursor(), 3);
 
         let v4 = iter.peek();
         assert_eq!(v4, Some(&&4));
@@ -872,11 +871,11 @@ mod tests {
 
         let mut iter = iterable.iter().peekmore(); // j -> 1
 
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
-        iter.move_next() // j -> 2
-            .move_next() // j -> 3
-            .move_next(); // j -> 4
+        iter.advance_cursor() // j -> 2
+            .advance_cursor() // j -> 3
+            .advance_cursor(); // j -> 4
 
         let v4 = iter.peek();
         assert_eq!(v4, Some(&&4));
@@ -888,44 +887,44 @@ mod tests {
 
         let mut iter = iterable.iter().peekmore(); // j -> 1
 
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek(), Some(&&1));
 
-        iter.move_next(); // j -> 2
-        assert_eq!(iter.needle_position(), 1);
+        iter.advance_cursor(); // j -> 2
+        assert_eq!(iter.cursor(), 1);
 
-        let _ = iter.move_previous(); // j -> 1
-        assert_eq!(iter.needle_position(), 0);
+        let _ = iter.move_cursor_back(); // j -> 1
+        assert_eq!(iter.cursor(), 0);
 
-        iter.move_next(); // j -> 2
-        assert_eq!(iter.needle_position(), 1);
+        iter.advance_cursor(); // j -> 2
+        assert_eq!(iter.cursor(), 1);
 
-        let _ = iter.move_previous(); // j -> 1
-        assert_eq!(iter.needle_position(), 0);
+        let _ = iter.move_cursor_back(); // j -> 1
+        assert_eq!(iter.cursor(), 0);
 
-        iter.move_next(); // j -> 2
-        assert_eq!(iter.needle_position(), 1);
+        iter.advance_cursor(); // j -> 2
+        assert_eq!(iter.cursor(), 1);
 
-        iter.move_next() // j -> 3
-            .move_next(); // j -> 4
+        iter.advance_cursor() // j -> 3
+            .advance_cursor(); // j -> 4
 
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
         let v4 = iter.peek();
         assert_eq!(v4, Some(&&4));
 
-        let _ = iter.move_previous().and_then(|it| {
-            it.move_previous() // j -> 3
+        let _ = iter.move_cursor_back().and_then(|it| {
+            it.move_cursor_back() // j -> 3
                 .and_then(|it| {
-                    it.move_previous() // j -> 2
-                        .and_then(|it| it.move_previous())
+                    it.move_cursor_back() // j -> 2
+                        .and_then(|it| it.move_cursor_back())
                 })
         }); // j -> 1
 
         let v1 = iter.peek();
         assert_eq!(v1, Some(&&1));
 
-        let prev = iter.move_previous();
+        let prev = iter.move_cursor_back();
         assert!(prev.is_err());
 
         let v1 = iter.peek();
@@ -937,7 +936,7 @@ mod tests {
         let iterable = [1, 2, 3];
         let mut iter = iterable.iter().peekmore();
 
-        iter.move_next();
+        iter.advance_cursor();
         let second = iter.peek().unwrap();
         assert_eq!(second, &&2);
 
@@ -953,64 +952,64 @@ mod tests {
         let iterable = [1, 2, 3];
         let mut iter = iterable.iter().peekmore(); // j = 1
 
-        iter.move_next(); // j = 2
-        iter.move_next(); // j = 3
+        iter.advance_cursor(); // j = 2
+        iter.advance_cursor(); // j = 3
         let value = iter.peek().unwrap(); // 3
         assert_eq!(value, &&3);
 
         let peek = iter.peek_previous(); // 2
         assert_eq!(peek.unwrap(), Some(&&2));
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
 
         let peek = iter.peek_previous(); // 1
         assert_eq!(peek.unwrap(), Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
         let peek = iter.peek_previous();
         assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
     fn peek_previous_beyond_none() {
         let iterable = [1];
         let mut iter = iterable.iter().peekmore(); // j = 1
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
-        iter.move_next(); // j = None (1)
+        iter.advance_cursor(); // j = None (1)
         let peek = iter.peek();
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
 
-        iter.move_next(); // j = None (2)
+        iter.advance_cursor(); // j = None (2)
         let peek = iter.peek();
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 2);
+        assert_eq!(iter.cursor(), 2);
 
-        iter.move_next(); // j = None (3)
+        iter.advance_cursor(); // j = None (3)
         let peek = iter.peek(); // current
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
         let peek = iter.peek_previous(); // None (2)
         assert_eq!(peek.unwrap(), None);
-        assert_eq!(iter.needle_position(), 2);
+        assert_eq!(iter.cursor(), 2);
 
         let peek = iter.peek_previous(); // None (1)
         assert_eq!(peek.unwrap(), None);
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
 
         let peek = iter.peek_previous(); // 1
         assert_eq!(peek.unwrap(), Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
         let peek = iter.peek_previous();
         assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
         let peek = iter.peek_previous();
         assert_eq!(peek, Err(PeekMoreError::ElementHasBeenConsumed));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1018,16 +1017,16 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
         let peek = iter.peek();
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 6);
+        assert_eq!(iter.cursor(), 6);
     }
 
     #[test]
@@ -1035,29 +1034,29 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
-        let result = iter.move_backward(2);
+        let result = iter.move_cursor_back_by(2);
         assert!(result.is_ok());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&2));
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
 
-        let result = iter.move_backward(1);
+        let result = iter.move_cursor_back_by(1);
         assert!(result.is_ok());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
-        let result = iter.move_backward(1);
+        let result = iter.move_cursor_back_by(1);
         assert!(result.is_err());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1065,17 +1064,17 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
-        let result = iter.move_backward(5);
+        let result = iter.move_cursor_back_by(5);
         assert!(result.is_err());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
     }
 
     #[test]
@@ -1083,26 +1082,26 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
-        let _ = iter.move_backward_or_reset(2);
+        let _ = iter.move_cursor_back_or_reset(2);
         let peek = iter.peek();
         assert_eq!(peek, Some(&&2));
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
 
-        let _ = iter.move_backward_or_reset(1);
+        let _ = iter.move_cursor_back_or_reset(1);
         let peek = iter.peek();
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
-        let _ = iter.move_backward_or_reset(1);
+        let _ = iter.move_cursor_back_or_reset(1);
         let peek = iter.peek();
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1110,16 +1109,16 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
-        let _ = iter.move_backward_or_reset(5);
+        let _ = iter.move_cursor_back_or_reset(5);
         let peek = iter.peek();
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1129,12 +1128,12 @@ mod tests {
         let mut iter = iterable.peekmore();
 
         assert_eq!(iter.peek(), None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
-        let _ = iter.move_backward_or_reset(5);
+        let _ = iter.move_cursor_back_or_reset(5);
 
         assert_eq!(iter.peek(), None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1145,11 +1144,11 @@ mod tests {
         let peek = iter.peek_forward(3);
 
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
         let peek = iter.peek_forward(3);
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 6);
+        assert_eq!(iter.cursor(), 6);
     }
 
     #[test]
@@ -1157,27 +1156,27 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
         let result = iter.peek_backward(2);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(&&2));
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
 
         let result = iter.peek_backward(1);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
         let result = iter.peek_backward(1);
         assert!(result.is_err());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1185,17 +1184,17 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
         let result = iter.peek_backward(5);
         assert!(result.is_err());
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
     }
 
     #[test]
@@ -1203,15 +1202,15 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward(3);
+        let _ = iter.advance_cursor_by(3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
 
         let peek = iter.peek_backward_or_first(5);
         assert_eq!(peek, Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1221,12 +1220,12 @@ mod tests {
         let mut iter = iterable.peekmore();
 
         assert_eq!(iter.peek(), None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
         let peek = iter.peek_backward_or_first(5);
 
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1234,11 +1233,11 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward_while(|i| **i.unwrap() != 3);
+        let _ = iter.advance_cursor_while(|i| **i.unwrap() != 3);
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&2));
-        assert_eq!(iter.needle_position(), 1);
+        assert_eq!(iter.cursor(), 1);
     }
 
     #[test]
@@ -1246,11 +1245,11 @@ mod tests {
         let iterable: [i32; 0] = [];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward_while(|i| if let Some(i) = i { **i != 3 } else { false });
+        let _ = iter.advance_cursor_while(|i| if let Some(i) = i { **i != 3 } else { false });
 
         let peek = iter.peek();
         assert_eq!(peek, None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1258,11 +1257,11 @@ mod tests {
         let iterable = [1, 2, 3, 4];
         let mut iter = iterable.iter().peekmore();
 
-        let _ = iter.move_forward_while(|i| i.is_some());
+        let _ = iter.advance_cursor_while(|i| i.is_some());
 
         let peek = iter.peek();
         assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.needle_position(), 3);
+        assert_eq!(iter.cursor(), 3);
     }
 
     #[test]
@@ -1272,15 +1271,15 @@ mod tests {
         let mut iter = iterable.iter().peekmore();
 
         assert_eq!(iter.peek_nth(0), Some(&&1));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek_nth(1), Some(&&2));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek_nth(2), Some(&&3));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek_nth(3), Some(&&4));
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek_nth(4), None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1290,9 +1289,9 @@ mod tests {
         let mut iter = iterable.iter().peekmore();
 
         assert_eq!(iter.peek_nth(0), None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek_nth(1), None);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
     }
 
     #[test]
@@ -1303,7 +1302,7 @@ mod tests {
 
         iter.move_nth(20);
         assert_eq!(iter.peek_nth(0), Some(&&1));
-        assert_eq!(iter.needle_position(), 20);
+        assert_eq!(iter.cursor(), 20);
         assert_eq!(iter.peek(), None);
 
         iter.move_nth(0);
@@ -1320,9 +1319,9 @@ mod tests {
         let mut iter = iterable.iter().peekmore();
 
         iter.move_nth(0);
-        assert_eq!(iter.needle_position(), 0);
+        assert_eq!(iter.cursor(), 0);
 
         iter.move_nth(10);
-        assert_eq!(iter.needle_position(), 10);
+        assert_eq!(iter.cursor(), 10);
     }
 }
