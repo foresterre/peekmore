@@ -19,10 +19,8 @@ categories = ["no-std"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["smallvec"]
 
-# smallvec with no-std requires nightly.
-# see https://github.com/servo/rust-smallvec/issues/160
 [dependencies.smallvec]
 version = "1.4.0"
 optional = true
