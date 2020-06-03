@@ -13,7 +13,7 @@ exclude = [
     ".vscode/*",
     "*.iml",
 ]
-keywords = ["peek", "lookahead", "iterator", "peekable", "look-ahead"]
+keywords = ["peek", "lookahead", "iterator", "peekable", "multipeek"]
 categories = ["no-std"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
