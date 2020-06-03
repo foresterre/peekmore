@@ -49,13 +49,12 @@ jobs:
       # don't run doc tests on pinned, since pinned is currently Rust 1.36, but cfg(doctest) requires Rust 1.40
       - if: matrix.build != 'pinned'
         run: cargo doc --verbose
+
+      # test with default features
       - run: cargo test --verbose
 
-      # If we are on a nightly version, we also want to build + test with smallvec
-      - if: matrix.build == 'nightly'
-        run: cargo build --verbose --features smallvec
-      - if: matrix.build == 'nightly'
-        run: cargo test --verbose --features smallvec
+      # test bare
+      - run: cargo test --verbose --no-default-features
 
   rustfmt:
     name: rustfmt
