@@ -379,8 +379,6 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// [`PeekMoreError::ElementHasBeenConsumed`].
     /// If a previous element does exist, an option wrapped in an `Ok` result will be returned.
     ///
-    ///  `Result` is re
-    ///
     /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
     #[inline]
     pub fn peek_previous(&mut self) -> Result<Option<&I::Item>, PeekMoreError> {
@@ -502,7 +500,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`move_backward_or_reset`]: struct.PeekMoreIterator.html#method.move_backward_or_reset
     #[inline]
-    pub fn move_cursor_back_by(&mut self, n: usize) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
+    pub fn move_cursor_back_by(
+        &mut self,
+        n: usize,
+    ) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
         if self.cursor < n {
             Err(PeekMoreError::ElementHasBeenConsumed)
         } else {
