@@ -597,6 +597,38 @@ impl<I: Iterator> PeekMoreIterator<I> {
     fn cursor(&self) -> usize {
         self.cursor
     }
+
+    /// Move the inner iterator to the same position as the cursor by calling `Iterator::next()`
+    ///
+    ///```rust
+    /// use peekmore::PeekMore;
+    ///
+    /// let iterable = [1, 2, 3, 4];
+    /// let mut iter = iterable.iter().peekmore();
+    ///
+    /// iter.advance_cursor_by(2);
+    /// assert_eq!(iter.peek(), Some(&&3));
+    /// assert_eq!(iter.next(), Some(&1));
+    /// iter.move_iterator_to_cursor();
+    /// assert_eq!(iter.peek(), Some(&&3));
+    /// assert_eq!(iter.next(), Some(&3));
+    ///```
+    pub fn move_iterator_to_cursor(&mut self) {
+        self.cursor = 0;
+        if let Some(v) = self.queue.pop() {
+            let mut queue;
+            #[cfg(not(feature = "smallvec"))]
+            {
+                queue = Vec::new();
+            }
+            #[cfg(feature = "smallvec")]
+            {
+                queue = SmallVec::new();
+            }
+            queue.push(v);
+            self.queue = queue;
+        }
+    }
 }
 
 impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
