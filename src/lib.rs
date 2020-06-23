@@ -1382,4 +1382,41 @@ mod tests {
         iter.move_nth(10);
         assert_eq!(iter.cursor(), 10);
     }
+
+    #[test]
+    fn move_iterator_to_cursor_is_noop_when_queue_is_empty_from_no_peeking() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert!(iter.queue.is_empty());
+
+        iter.move_iterator_to_cursor();
+
+        assert!(iter.queue.is_empty());
+        assert_eq!(iter.peek(), Some(&&1));
+        assert!(!iter.queue.is_empty());
+    }
+
+    #[test]
+    fn move_iterator_to_cursor_is_noop_when_queue_is_empty_from_iteration() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert!(iter.queue.is_empty());
+
+        iter.peek_forward(2);
+        iter.next();
+        iter.next();
+        iter.next();
+
+        assert!(iter.queue.is_empty());
+
+        iter.move_iterator_to_cursor();
+
+        assert!(iter.queue.is_empty());
+        assert_eq!(iter.peek(), Some(&&4));
+        assert!(!iter.queue.is_empty());
+    }
 }
