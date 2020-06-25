@@ -598,8 +598,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.cursor
     }
 
-    /// Move the inner iterator to the same position as the cursor by calling `Iterator::next()`
+    /// Remove all elements from the start of the iterator until reaching the same
+    /// position as the cursor by calling `Iterator::next()`
     ///
+    /// After calling this method, `iter.peek() == iter.next().as_ref()`
     ///```rust
     /// use peekmore::PeekMore;
     ///
@@ -609,11 +611,11 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// iter.advance_cursor_by(2);
     /// assert_eq!(iter.peek(), Some(&&3));
     /// assert_eq!(iter.next(), Some(&1));
-    /// iter.move_iterator_to_cursor();
+    /// iter.truncate_iterator_to_cursor();
     /// assert_eq!(iter.peek(), Some(&&3));
     /// assert_eq!(iter.next(), Some(&3));
     ///```
-    pub fn move_iterator_to_cursor(&mut self) {
+    pub fn truncate_iterator_to_cursor(&mut self) {
         self.cursor = 0;
         if let Some(v) = self.queue.pop() {
             let mut queue;
@@ -1384,14 +1386,14 @@ mod tests {
     }
 
     #[test]
-    fn move_iterator_to_cursor_is_noop_when_queue_is_empty_from_no_peeking() {
+    fn truncate_iterator_to_cursor_is_noop_when_queue_is_empty_from_no_peeking() {
         let iterable = [1, 2, 3, 4];
 
         let mut iter = iterable.iter().peekmore();
 
         assert!(iter.queue.is_empty());
 
-        iter.move_iterator_to_cursor();
+        iter.truncate_iterator_to_cursor();
 
         assert!(iter.queue.is_empty());
         assert_eq!(iter.peek(), Some(&&1));
@@ -1399,7 +1401,7 @@ mod tests {
     }
 
     #[test]
-    fn move_iterator_to_cursor_is_noop_when_queue_is_empty_from_iteration() {
+    fn truncate_iterator_to_cursor_is_noop_when_queue_is_empty_from_iteration() {
         let iterable = [1, 2, 3, 4];
 
         let mut iter = iterable.iter().peekmore();
@@ -1413,7 +1415,7 @@ mod tests {
 
         assert!(iter.queue.is_empty());
 
-        iter.move_iterator_to_cursor();
+        iter.truncate_iterator_to_cursor();
 
         assert!(iter.queue.is_empty());
         assert_eq!(iter.peek(), Some(&&4));
