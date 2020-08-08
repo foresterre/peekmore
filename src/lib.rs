@@ -616,7 +616,12 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// assert_eq!(iter.next(), Some(&3));
     ///```
     pub fn truncate_iterator_to_cursor(&mut self) {
+        for _ in 0..self.cursor {
+            let _ = self.iterator.next();
+        }
+
         self.cursor = 0;
+
         if let Some(v) = self.queue.pop() {
             let mut queue;
             #[cfg(not(feature = "smallvec"))]
@@ -1420,5 +1425,44 @@ mod tests {
         assert!(iter.queue.is_empty());
         assert_eq!(iter.peek(), Some(&&4));
         assert!(!iter.queue.is_empty());
+    }
+
+    #[test]
+    fn truncate_to_iterator_fill_queue() {
+        let mut iter = [0, 1, 2, 3].iter().peekmore();
+        iter.advance_cursor();
+        iter.truncate_iterator_to_cursor();
+
+        let value = **iter.peek().unwrap();
+
+        assert_eq!(value, 1);
+    }
+
+    #[test]
+    fn truncate_to_iterator_on_empty_collection() {
+        let mut iter = core::iter::empty::<i32>().peekmore();
+        iter.advance_cursor();
+        assert_eq!(iter.cursor, 1);
+
+        iter.truncate_iterator_to_cursor();
+        assert_eq!(iter.cursor, 0);
+
+        assert!(iter.peek().is_none());
+    }
+
+    #[test]
+    fn truncate_to_iterator_on_single_element_collection() {
+        let mut iter = core::iter::once(0).peekmore();
+        assert_eq!(*iter.peek().unwrap(), 0);
+        assert_eq!(iter.cursor, 0);
+
+        iter.advance_cursor(); // starts at 0, so now is 1 (i.e. second element so None)
+        assert_eq!(iter.cursor, 1);
+        assert!(iter.peek().is_none());
+
+        iter.truncate_iterator_to_cursor();
+        assert_eq!(iter.cursor, 0);
+
+        assert!(iter.peek().is_none());
     }
 }
