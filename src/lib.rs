@@ -616,24 +616,30 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// assert_eq!(iter.next(), Some(&3));
     ///```
     pub fn truncate_iterator_to_cursor(&mut self) {
-        for _ in 0..self.cursor {
+        // if the cursor and the queue length are equal,
+        // then we want to clear the queue completely
+        let is_equal = self.cursor == self.queue.len();
+
+        // if the cursor is greater than the queue length,
+        // we want to remove the overflow from the iterator
+        for _ in 0..self.cursor.saturating_sub(self.queue.len()) {
             let _ = self.iterator.next();
         }
 
         self.cursor = 0;
 
+        // if `self.queue.pop()` is `None`, then it is not necessary
+        // to clear the queue
+        //
+        // otherwise, we pop the last item and clear the queue.
+        // if the cursor and queue were equal, then we discard the value
+        //
+        // otherwise we insert it back into the queue
         if let Some(v) = self.queue.pop() {
-            let mut queue;
-            #[cfg(not(feature = "smallvec"))]
-            {
-                queue = Vec::new();
+            self.queue.clear();
+            if !is_equal {
+                self.queue.push(v);
             }
-            #[cfg(feature = "smallvec")]
-            {
-                queue = SmallVec::new();
-            }
-            queue.push(v);
-            self.queue = queue;
         }
     }
 }
@@ -1464,5 +1470,18 @@ mod tests {
         assert_eq!(iter.cursor, 0);
 
         assert!(iter.peek().is_none());
+    }
+
+    #[test]
+    fn truncate_to_iterator_cursor_and_queue_equal_length() {
+        let mut iter = [0, 1, 2, 3].iter().peekmore();
+        iter.peek();
+        iter.advance_cursor();
+        iter.truncate_iterator_to_cursor();
+
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), None);
     }
 }
