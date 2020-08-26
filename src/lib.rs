@@ -642,6 +642,40 @@ impl<I: Iterator> PeekMoreIterator<I> {
             }
         }
     }
+
+    /// Returns a view for the next `s` (inclusive) to `t` (exclusive) elements.
+    /// Note that `s` and `t`  represent indices and start at `0`.
+    /// These indices always starts at the beginning of the queue  (the unconsumed
+    /// iterator) for this method and don't take the position of the cursor into account.
+    ///
+    /// **panics** if `s > t`, in which case the range would be negative
+    ///
+    /// ```
+    /// use peekmore::PeekMore;
+    ///
+    /// let iterable = [1, 2, 3, 4];
+    /// let mut iter = iterable.iter().peekmore();
+    ///
+    /// match iter.peek_range(1, 3) {
+    ///     [Some(2), Some(p)] => println!("Yay! we found number {} after number 2", p),
+    ///     _ => println!("Oh noes!"),
+    /// }
+    /// ```
+    pub fn peek_range(&mut self, s: usize, t: usize) -> &[Option<I::Item>] {
+        assert!(
+            s <= t,
+            "range of the peeked view [s, t] should be positive (i.e. s <= t)"
+        );
+
+        // fill the queue if we don't have enough elements
+        if t > self.queue.len() {
+            self.fill_queue(t);
+        }
+
+        // return a view of the selected range
+
+        &self.queue.as_slice()[s..t]
+    }
 }
 
 impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
@@ -1483,5 +1517,90 @@ mod tests {
         assert_eq!(iter.next(), Some(&2));
         assert_eq!(iter.next(), Some(&3));
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn peek_range_from_start_smaller_than_input_len() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_range(0, 2);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+        assert_eq!(view.len(), 2);
+    }
+
+    #[test]
+    fn peek_range_from_start_eq_to_input_len() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_range(0, 4);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+        assert_eq!(view[2], Some(&2));
+        assert_eq!(view[3], Some(&3));
+        assert_eq!(view.len(), 4);
+    }
+
+    #[test]
+    fn peek_range_from_start_bigger_than_input_len() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_range(0, 6);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+        assert_eq!(view[2], Some(&2));
+        assert_eq!(view[3], Some(&3));
+        assert_eq!(view[4], None);
+        assert_eq!(view[5], None);
+        assert_eq!(view.len(), 6);
+    }
+
+    #[test]
+    fn peek_range_from_middle() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_range(2, 5);
+
+        assert_eq!(view[0], Some(&2));
+        assert_eq!(view[1], Some(&3));
+        assert_eq!(view[2], None);
+        assert_eq!(view.len(), 3);
+    }
+
+    #[test]
+    fn peek_range_out_of_bounds() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_range(5, 6);
+
+        assert_eq!(view[0], None);
+        assert_eq!(view.len(), 1);
+    }
+
+    #[test]
+    fn peek_range_empty() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_range(0, 0);
+
+        assert_eq!(view.len(), 0);
+    }
+
+    #[test]
+    fn peek_range_match() {
+        let mut peeking_queue = ["call", "f", "1"].iter().peekmore();
+        let view = peeking_queue.peek_range(1, 3);
+
+        let value = match view {
+            [Some(&"f"), Some(arg)] => arg,
+            _ => panic!("test case peek_range_match failed"),
+        };
+
+        assert_eq!(**value, "1");
+        assert_eq!(view.len(), 2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn peek_range_panic_on_invalid_range() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let _ = peeking_queue.peek_range(2, 1);
     }
 }
