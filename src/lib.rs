@@ -685,6 +685,36 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
         &self.queue.as_slice()[start..end]
     }
+
+    /// Returns a view into the next `n` unconsumed elements of the iterator.
+    /// Here, `n` represents the amount of elements as counted from the start of the unconsumed iterator.
+    /// For example, if we created a (peekmore) iterator from the array `[1, 2, 3]` and consume the first
+    /// element by calling the regular `Iterator::next` method, and then call `peek_n(3)`, the iterator will
+    /// return `&[Some(2), Some(3), None]`. Here `Some(2)` and `Some(3)` are queued elements which
+    /// we can peek at, and are not consumed by the iterator yet. `None` is the last element returned by
+    /// our view, since our original iterator is sized and doesn't contain more elements. Thus in the absence
+    /// of additional elements, we return `None`. This method is a variation on [`peek_range`].
+    /// We could instead have called `peek_range(0, n)` (note that `peek_range` takes indices as arguments
+    /// instead of an amount). This method does not use or modify the position of the cursor.
+    ///
+    /// Example:
+    /// ```
+    /// use peekmore::PeekMore;
+    ///
+    /// let iterable = [1, 2, 3];
+    /// let mut iter = iterable.iter().peekmore();
+    ///
+    /// match iter.peek_n(4) { // -> &[Option(&1), Option(&2), Option(&3), None]
+    ///   [Some(a), Some(b), Some(c), None] => println!("Found a match ({}, {}, {}) ", a, b, c),
+    ///   _ => eprintln!("Expected (just) 3 more values"),
+    /// }
+    /// ```
+    ///
+    /// [`peek_range`]: struct.PeekMoreIterator.html#method.peek_range
+    #[inline]
+    pub fn peek_n(&mut self, n: usize) -> &[Option<I::Item>] {
+        self.peek_range(0, n)
+    }
 }
 
 impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
@@ -1611,5 +1641,75 @@ mod tests {
     fn peek_range_panic_on_invalid_range() {
         let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
         let _ = peeking_queue.peek_range(2, 1);
+    }
+
+    #[test]
+    fn peek_n_from_start_smaller_than_input_len() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_n(2);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+        assert_eq!(view.len(), 2);
+    }
+
+    #[test]
+    fn peek_n_from_start_eq_to_input_len() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_n(4);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+        assert_eq!(view[2], Some(&2));
+        assert_eq!(view[3], Some(&3));
+        assert_eq!(view.len(), 4);
+    }
+
+    #[test]
+    fn peek_n_from_start_bigger_than_input_len() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_n(6);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+        assert_eq!(view[2], Some(&2));
+        assert_eq!(view[3], Some(&3));
+        assert_eq!(view[4], None);
+        assert_eq!(view[5], None);
+        assert_eq!(view.len(), 6);
+    }
+
+    #[test]
+    fn peek_n_empty() {
+        let empty: [u32; 0] = [];
+        let mut peeking_queue = empty.iter().peekmore();
+        let view = peeking_queue.peek_n(3);
+
+        assert_eq!(view[0], None);
+        assert_eq!(view[0], None);
+        assert_eq!(view[0], None);
+        assert_eq!(view.len(), 3);
+    }
+
+    #[test]
+    fn peek_n_zero() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        let view = peeking_queue.peek_n(0);
+
+        assert_eq!(view.len(), 0);
+    }
+
+    #[test]
+    fn peek_n_match() {
+        let mut peeking_queue = ["call", "f", "1"].iter().peekmore();
+        let view = peeking_queue.peek_n(4);
+
+        let value = match view {
+            [Some(&"call"), Some(&"f"), Some(arg), None] => arg,
+            _ => panic!("test case peek_n_match failed"),
+        };
+
+        assert_eq!(**value, "1");
+        assert_eq!(view.len(), 4);
     }
 }
