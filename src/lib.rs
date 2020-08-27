@@ -643,12 +643,12 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
-    /// Returns a view for the next `s` (inclusive) to `t` (exclusive) elements.
-    /// Note that `s` and `t`  represent indices and start at `0`.
+    /// Returns a view for the next `start` (inclusive) to `end` (exclusive) elements.
+    /// Note that `start` and `end`  represent indices and start at `0`.
     /// These indices always starts at the beginning of the queue  (the unconsumed
     /// iterator) for this method and don't take the position of the cursor into account.
     ///
-    /// **panics** if `s > t`, in which case the range would be negative
+    /// **panics** if `start > end`, in which case the range would be negative
     ///
     /// ```
     /// use peekmore::PeekMore;
@@ -661,20 +661,30 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///     _ => println!("Oh noes!"),
     /// }
     /// ```
-    pub fn peek_range(&mut self, s: usize, t: usize) -> &[Option<I::Item>] {
+    // implementation choice:
+    // why not core::ops::RangeBound<T>? it adds unnecessary complexity since we would need to define what
+    // unbounded bounds mean (e.g. for end whether it would be the end of the queue or the unconsumed iterator
+    // elements until None or that it won't be allowed, or some other definition), we would need to map
+    // the range Inclusive and Exclusive and Unbound-ed elements to usize, and we would need to verify
+    // that T would be an unsigned integer. Using RangeBound would not be all negative though since we
+    // could then use the standard Rust range syntax options such as 0..4 or 0..=3, which clearly
+    // tell a user what kind of bounds are used (inclusive, exclusive, etc.)
+    // For now however, for the reason of not adding unnecessary complexity, I've decided
+    // that the simplicity of concrete start and end types is the better choice.
+    pub fn peek_range(&mut self, start: usize, end: usize) -> &[Option<I::Item>] {
         assert!(
-            s <= t,
-            "range of the peeked view [s, t] should be positive (i.e. s <= t)"
+            start <= end,
+            "range of the peeked view [start, end] should be positive (i.e. start <= end)"
         );
 
         // fill the queue if we don't have enough elements
-        if t > self.queue.len() {
-            self.fill_queue(t);
+        if end > self.queue.len() {
+            self.fill_queue(end);
         }
 
         // return a view of the selected range
 
-        &self.queue.as_slice()[s..t]
+        &self.queue.as_slice()[start..end]
     }
 }
 
