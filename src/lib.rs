@@ -17,8 +17,7 @@
 //! By default the underlying data structure of this queue is a Vec. By enabling the `smallvec`
 //! feature, you can opt-in to use SmallVec as the underlying queue data structure. SmallVec uses
 //! the stack for a limited amount of elements and will only allocate on the heap if this maximum
-//! amount of elements is reached. SmallVec support for `no_std` is experimental and currently
-//! [requires] a nightly compiler.
+//! amount of elements is reached.
 //!
 //!
 //! **Illustrated example:**
