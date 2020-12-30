@@ -144,7 +144,7 @@ impl<I: Iterator> PeekMore for I {
 /// Default stack size for SmallVec.
 /// Admittedly the current size is chosen quite arbitrarily.
 #[cfg(feature = "smallvec")]
-const DEFAULT_STACK_SIZE: usize = 256;
+const DEFAULT_STACK_SIZE: usize = 8;
 
 /// This iterator makes it possible to peek multiple times without consuming a value.
 /// In reality the underlying iterator will be consumed, but the values will be stored in a queue.
