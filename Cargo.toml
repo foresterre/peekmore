@@ -19,7 +19,7 @@ categories = ["no-std"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["smallvec"]
+default = []
 
 [dependencies.smallvec]
 version = "1.5.1"
