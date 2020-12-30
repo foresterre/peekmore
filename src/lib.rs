@@ -6,18 +6,17 @@
 //!
 //! This crate introduces a multi-peekable iterator.
 //! The iterator is similar to [`Peekable`]. The main difference is that [`Peekable`] only
-//! allows you to peek at the next element and no further. This crate aims to take that limitation
-//! away.
+//! allows you to peek at the next element and no further. When using `PeekMore` however,
+//! you can peek at as many elements as you want.
 //!
 //! **A peek at how it works:**
 //!
 //! To enable peeking at multiple elements ahead of consuming a next element, the iterator uses a
 //! traversable queue which holds the elements which you can peek at, but have not been
 //! consumed (yet).
-//! By default the underlying data structure of this queue is a Vec. By enabling the `smallvec`
-//! feature, you can opt-in to use SmallVec as the underlying queue data structure. SmallVec uses
-//! the stack for a limited amount of elements and will only allocate on the heap if this maximum
-//! amount of elements is reached.
+//! The underlying data structure of this queue can be a `Vec`, or a `SmallVec` from the smallvec crate.
+//! By default, the `SmallVec` is used. SmallVec uses the stack for a limited amount of elements and
+//! will only allocate on the heap if this maximum amount of elements is reached.
 //!
 //!
 //! **Illustrated example:**
@@ -106,17 +105,23 @@ static A: std::alloc::System = std::alloc::System;
 
 use core::iter::FusedIterator;
 
-/// We use a Vec to queue iterator elements if the smallvec feature is disabled.
+/// Use a `Vec` to queue iterator elements if the `smallvec` feature is disabled.
 #[cfg(not(feature = "smallvec"))]
 use alloc::vec::Vec;
 
-/// If the smallvec feature is enabled, we use a SmallVec to queue iterator elements instead of a Vec.
+/// Use a SmallVec to queue iterator elements instead of a Vec, if the `smallvec` feature is enabled
+/// (default).
 #[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 
-/// Trait which allows you to create an iterator which allows us to peek at any unconsumed element.
+/// Trait which allows you to create the multi-peek iterator.
+/// It allows you to peek at any unconsumed element.
+/// Elements can be consumed using the [`next`] method defined on any [`Iterator`].
+///
+/// [`next`]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#tymethod.next
+/// [`Iterator`]: https://doc.rust-lang.org/core/iter/trait.Iterator.html
 pub trait PeekMore: Iterator + Sized {
-    /// Create an iterator where we can look (peek) forward multiple times from an existing iterator.
+    /// Create a multi-peek iterator where we can peek forward multiple times from an existing iterator.
     fn peekmore(self) -> PeekMoreIterator<Self>;
 }
 
@@ -142,50 +147,58 @@ impl<I: Iterator> PeekMore for I {
 const DEFAULT_STACK_SIZE: usize = 256;
 
 /// This iterator makes it possible to peek multiple times without consuming a value.
-/// In reality the underlying iterator will be consumed, but the values will be stored in a local
-/// queue. This queue allows us to move around unconsumed elements (as far as the iterator is concerned).
+/// In reality the underlying iterator will be consumed, but the values will be stored in a queue.
+/// This queue allows us to peek at unconsumed elements (as far as the multi-peek iterator is concerned).
+/// When the iterator [consumes] an element, the element at the front of the queue will be dequeued,
+/// and will no longer be peekable.
+///
+/// [consumes]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#tymethod.next
 #[derive(Clone, Debug)]
 pub struct PeekMoreIterator<I: Iterator> {
-    /// Inner iterator. Consumption of this inner iterator does not represent consumption of the
-    /// PeekMoreIterator.
+    /// The underlying iterator. Consumption of this inner iterator does not represent consumption of the
+    /// `PeekMoreIterator`.
     iterator: I,
 
-    /// The queue represent the items of our iterator which have not been consumed, but have been
-    /// prepared to view ('peek' at) without consuming them. Once an element has been consumed by
-    /// the iterator, it is no longer possible to peek at it either (and will be removed from the
-    /// queue).
+    /// The queue represents the items of our iterator which have not been consumed, but can be peeked
+    /// at without consuming them. Once an element has been consumed by the iterator, the element will
+    /// be dequeued and it will no longer be possible to peek at this element.
     #[cfg(not(feature = "smallvec"))]
     queue: Vec<Option<I::Item>>,
     #[cfg(feature = "smallvec")]
     queue: SmallVec<[Option<I::Item>; DEFAULT_STACK_SIZE]>,
 
-    /// The cursor helps us determine which item we currently have in view.
+    /// The cursor points to the element we are currently peeking at.
     ///
-    /// If the cursor is 0, we have not advanced (or have reset) our peeking window, and
-    /// it will point to the equivalent element as what [`core::iter::Peekable::peek`] would point to.  
+    /// The cursor will point to the first unconsumed element if the value is `0`, the second if it is
+    /// `1`, and so forth. Peeking at the 0th cursor element is equivalent to peeking with
+    /// [`core::iter::Peekable::peek`].
     ///
     /// [`core::iter::Peekable::peek`]: https://doc.rust-lang.org/core/iter/struct.Peekable.html#method.peek
     cursor: usize,
 }
 
 impl<I: Iterator> PeekMoreIterator<I> {
-    /// Get a reference to the element where the cursor currently points at (if such element exists).
-    /// Sometimes we also call this the current 'view'.
+    /// Get a reference to the element where the cursor currently points to. If no such element exists,
+    /// return `None` will be returned.
     ///
-    /// If we haven't advanced our cursor, that will be the same element as the one `next()` would
-    /// return, but if we have moved our cursor, it will be the element we moved to instead.
-    /// Note that the cursor can't ever point at an element (which existed) before the first
-    /// unconsumed element within the iterator. In a sense the cursor moves independently within the
-    /// iterator. But it will always stick to unconsumed elements.
+    /// If we haven't advanced our cursor, it will point to the same element as `Iterator::next()` would
+    /// return.
+    /// Note that the cursor can't point to an element before the first unconsumed element within
+    /// the iterator. In a sense the cursor moves independently within the iterator.
+    /// But it can only point to unconsumed elements.
     ///
     /// The following illustration aims to show how `peek()` behaves. `i` represents the position
     /// of the iterator (i.e. the next value that will be returned if `next()` is called) and `j`
     /// represents the position of the cursor (i.e. the current element referenced if
     /// `peek()` is called).
     /// In example code next to the illustrations, the first element `1` is analogous to `A`,
-    /// `2` to `B` etc.
+    /// `2` to `B`, etc.
     ///
-    /// * start:
+    /// The example below primarily uses `advance_cursor()` to move the cursor and `peek()` to
+    /// peek at the element the cursor points to, but many often more convenient methods exist to
+    /// change the element cursor points at, or to peek at those elements.
+    ///
+    /// * Let's start:
     ///
     /// ```rust
     /// use peekmore::PeekMore;
@@ -203,7 +216,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///   i, j
     /// ```
     ///
-    /// * call `peek()`:
+    /// * Call `peek()`:
     ///
     /// ```rust
     /// # use peekmore::PeekMore;
@@ -223,7 +236,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// ```
     ///
-    /// * call `advance_cursor()`
+    /// * Call `advance_cursor()`
     ///
     /// ```rust
     /// # use peekmore::PeekMore;
@@ -240,12 +253,11 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///   i         j
     /// ```
     ///
-    /// * call `peek()`
-    ///   _or_ `peek(); peek()`  _or_ `peek(); peek(); peek()` etc.
+    /// * Call `peek()`
     ///
-    /// (The reference returned by `peek()` will not change, similar to the behaviour of
-    /// [`core::iter::Peekable::peek`].
-    ///      In order to move to the next peekable element, we need to advance our view.)
+    /// The reference returned by `peek()` will not change, similar to the behaviour of
+    /// [`core::iter::Peekable::peek`]. In order to move to the next peekable element, we need to
+    /// advance the cursor.
     ///
     /// ```rust
     /// # use peekmore::PeekMore;
@@ -255,7 +267,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// let j = iterator.peek();
     /// assert_eq!(j, Some(&&2));
     ///
-    /// // Calling peek() multiple times doesn't shift the position of our cursor;
+    /// // Calling `peek()` multiple times doesn't shift the position of the cursor;
     /// // a reference to the same element will be returned each call.
     /// assert_eq!(iterator.peek(), Some(&&2));
     /// assert_eq!(iterator.peek(), Some(&&2));
@@ -271,8 +283,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// ```
     ///
     ///
-    /// * call `next()`
-    ///     (i.e. advance the iterator; the element represented by A will be consumed)
+    /// * Call `next()`
+    ///
+    /// By calling next, the underlying iterator will be advanced andthe element represented by `A`
+    /// will be consumed. It won't be possible to peek at `A` anymore.
     ///
     /// ```rust
     /// # use peekmore::PeekMore;
@@ -292,10 +306,11 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///  returns Some(A)
     /// ```
     ///
-    /// * call `next()`.
-    ///     (i.e. advance the iterator again; we'll see that the cursor position shifts to the
-    ///      next iterator position if the iterator consumes elements where our cursor pointed at
-    ///      previously (that is if `j < i`))
+    /// * Call `next()`.
+    ///
+    /// The underlying iterator is advanced again.
+    /// As a result, the cursor position also shifts to the next iterator position, which happens if
+    /// the underlying iterator consumed an element where our cursor pointed at (that is if `j < i`).
     ///
     ///
     /// ```rust
@@ -373,9 +388,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
         this.peek()
     }
 
-    /// Try to peek at a previous element. If no such element exists (i.e. our cursor is already
-    /// at the same point as the next iterator element), it will return an `Err` result containing a
-    /// [`PeekMoreError::ElementHasBeenConsumed`].
+    /// Try to peek at a previous element. If no such element exists, an `Err` result containing a
+    /// [`PeekMoreError::ElementHasBeenConsumed`] will be returned.
+    ///
     /// If a previous element does exist, an option wrapped in an `Ok` result will be returned.
     ///
     /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
@@ -402,7 +417,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// The cursor will then stay at the position it was prior to calling this method.
     ///
     /// If you want to peek at the first unconsumed element instead of returning with an error, you
-    /// can use the [`peek_backward_or_first`] method instead of this one.
+    /// can use the [`peek_backward_or_first`] method instead.
     ///
     /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
     /// [`peek_backward_or_first`]: struct.PeekMoreIterator.html#method.peek_backward_or_first
@@ -432,30 +447,32 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.queue.get(n).and_then(|v| v.as_ref())
     }
 
-    /// Move the cursor to the next peekable element.
-    /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
+    /// Advance the cursor to the next peekable element.
     ///
-    /// A mutable reference to the iterator is returned.
-    /// This operation can be chained.
+    /// This method does not advance the iterator itself. To advance the iterator, call [`next()`]
+    /// instead.
     ///
-    /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
+    /// A mutable reference to the iterator is returned, which allows the operation to be chained.
+    ///
+    /// [`next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
     pub fn advance_cursor(&mut self) -> &mut PeekMoreIterator<I> {
         self.increment_cursor();
         self
     }
 
-    /// Move the cursor `n` elements forward.
-    /// This does not advance the iterator itself. To advance the iterator, use [`Iterator::next()`].
+    /// Advance the cursor `n` elements forward.
     ///
-    /// [`Iterator::next()`]: struct.PeekMoreIterator.html#impl-Iterator
+    /// This does not advance the iterator itself. To advance the iterator, call [`next()`] instead.
+    ///
+    /// [`next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
     pub fn advance_cursor_by(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         self.cursor += n;
         self
     }
 
-    /// Moves the cursor forward for as many elements as a predicate is true.
+    /// Moves the cursor forward until the predicate is no longer `true`.
     #[inline]
     pub fn advance_cursor_while<P: Fn(Option<&I::Item>) -> bool>(
         &mut self,
@@ -473,7 +490,8 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Move the cursor to the previous peekable element.
-    /// If such an element doesn't exist, returns a [`PeekMoreError::ElementHasBeenConsumed`].
+    /// If such an element doesn't exist, a [`PeekMoreError::ElementHasBeenConsumed`] will be
+    /// returned.
     ///
     /// If we can move to a previous element, a mutable reference to the iterator,
     /// wrapped in the `Ok` variant of `Result` will be returned.
@@ -490,12 +508,12 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Move the cursor `n` elements backward. If there aren't `n` unconsumed elements prior to the
-    /// cursor it will return an error. In case of an error, the cursor will stay at the position
+    /// cursor, an error will be returned instead. In case of an error, the cursor will stay at the position
     /// it pointed at prior to calling this method.
     ///
     /// If you want to reset the cursor to the first unconsumed element even if there aren't `n`
-    /// unconsumed elements before the position the cursor points at, you can use the
-    /// [`move_backward_or_reset`] method instead.
+    /// unconsumed elements before the cursor position, the [`move_backward_or_reset`] method can be
+    /// used.
     ///
     /// [`move_backward_or_reset`]: struct.PeekMoreIterator.html#method.move_backward_or_reset
     #[inline]
@@ -511,8 +529,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
-    /// Move the cursor `n` elements backward or reset to the first non consumed element if
-    /// we can't move the cursor `n` elements to the back.
+    /// Move the cursor `n` elements backward, or reset its position to the first non-consumed element.
+    /// The latter happens when the cursor position is smaller than the elements it has to move
+    /// backwards by.
     #[inline]
     pub fn move_cursor_back_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
         if self.cursor < n {
@@ -540,8 +559,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.reset_cursor()
     }
 
-    /// Reset the position of the cursor. If we call [`peek`] just after a reset,
-    /// it will return a reference to the first element again.
+    /// Reset the position of the cursor.
+    ///
+    /// If [`peek`] is called just after a reset, it will return a reference to the first element.
     ///
     /// [`peek`]: struct.PeekMoreIterator.html#method.peek
     #[inline]
@@ -598,9 +618,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Remove all elements from the start of the iterator until reaching the same
-    /// position as the cursor by calling `Iterator::next()`
+    /// position as the cursor by calling `Iterator::next()`.
     ///
-    /// After calling this method, `iter.peek() == iter.next().as_ref()`
+    /// After calling this method, `iter.peek() == iter.next().as_ref()`.
+    ///
     ///```rust
     /// use peekmore::PeekMore;
     ///
@@ -642,12 +663,15 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
-    /// Returns a view for the next `start` (inclusive) to `end` (exclusive) elements.
-    /// Note that `start` and `end`  represent indices and start at `0`.
-    /// These indices always starts at the beginning of the queue  (the unconsumed
-    /// iterator) for this method and don't take the position of the cursor into account.
+    /// Returns a view into the next `start` (inclusive) to `end` (exclusive) elements.
     ///
-    /// **panics** if `start > end`, in which case the range would be negative
+    /// **Note:** `start` and `end` represent indices and start at `0`. These indices always start
+    /// at the beginning of the queue (the unconsumed iterator) and don't take the position of the cursor
+    /// into account.
+    ///
+    /// # Panics
+    ///
+    /// **Panics** if `start > end`, in which case the range would be negative.
     ///
     /// ```
     /// use peekmore::PeekMore;
@@ -661,7 +685,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// }
     /// ```
     // implementation choice:
-    // why not core::ops::RangeBound<T>? it adds unnecessary complexity since we would need to define what
+    // why not `core::ops::RangeBound<T>`? it adds unnecessary complexity since we would need to define what
     // unbounded bounds mean (e.g. for end whether it would be the end of the queue or the unconsumed iterator
     // elements until None or that it won't be allowed, or some other definition), we would need to map
     // the range Inclusive and Exclusive and Unbound-ed elements to usize, and we would need to verify
@@ -689,16 +713,20 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// Returns a view into the next `n` unconsumed elements of the iterator.
     ///
     /// Here, `n` represents the amount of elements as counted from the start of the unconsumed iterator.
+    ///
     /// For example, if we created a (peekmore) iterator from the array `[1, 2, 3]` and consume the first
     /// element by calling the regular `Iterator::next` method, and then call `peek_amount(3)`, the iterator will
     /// return `&[Some(2), Some(3), None]`. Here `Some(2)` and `Some(3)` are queued elements which
     /// we can peek at, and are not consumed by the iterator yet. `None` is the last element returned by
     /// our view, since our original iterator is sized and doesn't contain more elements. Thus in the absence
     /// of additional elements, we return `None`. This method is a variation on [`peek_range`].
-    /// We could instead have called `peek_range(0, n)` (note that `peek_range` takes indices as arguments
-    /// instead of an amount). This method does not use or modify the position of the cursor.
+    /// You could instead have called `peek_range(0, n)` (note that `peek_range` takes indices as arguments
+    /// instead of an amount).
     ///
-    /// Example:
+    /// **Note:** This method does not use or modify the position of the cursor.
+    ///
+    /// # Example:
+    ///
     /// ```
     /// use peekmore::PeekMore;
     ///
