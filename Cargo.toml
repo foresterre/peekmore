@@ -27,7 +27,7 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4"
 
 [[bench]]
 name = "peek_bench"
