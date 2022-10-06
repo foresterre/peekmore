@@ -380,6 +380,12 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.queue.get(self.cursor).and_then(|v| v.as_ref())
     }
 
+    /// Peeks at the first unconsumed element, regardless of where the cursor currently is.
+    #[inline]
+    pub fn peek_first(&mut self) -> Option<&I::Item> {
+        self.peek_nth(0)
+    }
+
     // Convenient as we don't have to re-assign our mutable borrow on the 'user' side.
     /// Advance the cursor to the next element and return a reference to that value.
     #[inline]
@@ -1444,6 +1450,44 @@ mod tests {
         assert_eq!(iter.cursor(), 0);
         assert_eq!(iter.peek_nth(4), None);
         assert_eq!(iter.cursor(), 0);
+    }
+
+    #[test]
+    fn check_peek_first() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        // testing to make sure no matter where the cursor is, we always point
+        // to the initial first element.
+        assert_eq!(iter.peek_first(), Some(&&1));
+        assert_eq!(iter.cursor(), 0);
+        iter.increment_cursor();
+        assert_eq!(iter.peek_first(), Some(&&1));
+        assert_eq!(iter.cursor(), 1);
+        iter.increment_cursor();
+        assert_eq!(iter.peek_first(), Some(&&1));
+        assert_eq!(iter.cursor(), 2);
+        iter.increment_cursor();
+        assert_eq!(iter.peek_first(), Some(&&1));
+        assert_eq!(iter.cursor(), 3);
+        iter.increment_cursor(); // try moving past the end too
+        assert_eq!(iter.peek_first(), Some(&&1));
+
+        // testing to ensure that it's the first *unconsumed* element of the iterator
+        // and not the first of the iterable.
+        iter.next();
+        assert_eq!(iter.peek_first(), Some(&&2));
+        iter.increment_cursor();
+        assert_eq!(iter.peek_first(), Some(&&2));
+
+        // testing at the end boundary of the iterable.
+        iter.next(); // consume 2
+        iter.next(); // consume 3
+        assert_eq!(iter.peek_first(), Some(&&4));
+
+        // test that if there's no unconsumed elements, it reports None.
+        iter.next();
+        assert_eq!(iter.peek_first(), None);
     }
 
     #[test]
