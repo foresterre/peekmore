@@ -25,10 +25,3 @@ default = []
 version = "1.5.1"
 optional = true
 default-features = false
-
-[dev-dependencies]
-criterion = "0.3"
-
-[[bench]]
-name = "peek_bench"
-harness = false

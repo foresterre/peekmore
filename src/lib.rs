@@ -120,13 +120,13 @@ use smallvec::SmallVec;
 ///
 /// [`next`]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#tymethod.next
 /// [`Iterator`]: https://doc.rust-lang.org/core/iter/trait.Iterator.html
-pub trait PeekMore: Iterator + Sized {
+pub trait PeekMore<const S: usize = 16>: Iterator + Sized {
     /// Create a multi-peek iterator where we can peek forward multiple times from an existing iterator.
-    fn peekmore(self) -> PeekMoreIterator<Self>;
+    fn peekmore(self) -> PeekMoreIterator<Self, S>;
 }
 
-impl<I: Iterator> PeekMore for I {
-    fn peekmore(self) -> PeekMoreIterator<I> {
+impl<I: Iterator, const S: usize> PeekMore<S> for I {
+    fn peekmore(self) -> PeekMoreIterator<I, S> {
         PeekMoreIterator {
             iterator: self,
 
@@ -134,17 +134,12 @@ impl<I: Iterator> PeekMore for I {
             queue: Vec::new(),
 
             #[cfg(feature = "smallvec")]
-            queue: SmallVec::new(),
+            queue: SmallVec::<[Self; S]>::new(),
 
             cursor: 0usize,
         }
     }
 }
-
-/// Default stack size for SmallVec.
-/// Admittedly the current size is chosen quite arbitrarily.
-#[cfg(feature = "smallvec")]
-const DEFAULT_STACK_SIZE: usize = 8;
 
 /// This iterator makes it possible to peek multiple times without consuming a value.
 /// In reality the underlying iterator will be consumed, but the values will be stored in a queue.
@@ -154,7 +149,7 @@ const DEFAULT_STACK_SIZE: usize = 8;
 ///
 /// [consumes]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#tymethod.next
 #[derive(Clone, Debug)]
-pub struct PeekMoreIterator<I: Iterator> {
+pub struct PeekMoreIterator<I: Iterator, const S: usize> {
     /// The underlying iterator. Consumption of this inner iterator does not represent consumption of the
     /// `PeekMoreIterator`.
     iterator: I,
@@ -165,7 +160,7 @@ pub struct PeekMoreIterator<I: Iterator> {
     #[cfg(not(feature = "smallvec"))]
     queue: Vec<Option<I::Item>>,
     #[cfg(feature = "smallvec")]
-    queue: SmallVec<[Option<I::Item>; DEFAULT_STACK_SIZE]>,
+    queue: SmallVec<[Option<I::Item>; S]>,
 
     /// The cursor points to the element we are currently peeking at.
     ///
@@ -177,7 +172,7 @@ pub struct PeekMoreIterator<I: Iterator> {
     cursor: usize,
 }
 
-impl<I: Iterator> PeekMoreIterator<I> {
+impl<I: Iterator, const S: usize> PeekMoreIterator<I, S> {
     /// Get a reference to the element where the cursor currently points to. If no such element exists,
     /// return `None` will be returned.
     ///
@@ -456,7 +451,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
-    pub fn advance_cursor(&mut self) -> &mut PeekMoreIterator<I> {
+    pub fn advance_cursor(&mut self) -> &mut PeekMoreIterator<I, S> {
         self.increment_cursor();
         self
     }
@@ -467,7 +462,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
-    pub fn advance_cursor_by(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+    pub fn advance_cursor_by(&mut self, n: usize) -> &mut PeekMoreIterator<I, S> {
         self.cursor += n;
         self
     }
@@ -477,7 +472,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn advance_cursor_while<P: Fn(Option<&I::Item>) -> bool>(
         &mut self,
         predicate: P,
-    ) -> &mut PeekMoreIterator<I> {
+    ) -> &mut PeekMoreIterator<I, S> {
         let view = self.peek();
 
         if predicate(view) {
@@ -498,7 +493,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     ///
     /// [`PeekMoreError::ElementHasBeenConsumed`]: enum.PeekMoreError.html#variant.ElementHasBeenConsumed
     #[inline]
-    pub fn move_cursor_back(&mut self) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
+    pub fn move_cursor_back(&mut self) -> Result<&mut PeekMoreIterator<I, S>, PeekMoreError> {
         if self.cursor >= 1 {
             self.decrement_cursor();
             Ok(self)
@@ -520,7 +515,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn move_cursor_back_by(
         &mut self,
         n: usize,
-    ) -> Result<&mut PeekMoreIterator<I>, PeekMoreError> {
+    ) -> Result<&mut PeekMoreIterator<I, S>, PeekMoreError> {
         if self.cursor < n {
             Err(PeekMoreError::ElementHasBeenConsumed)
         } else {
@@ -533,7 +528,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// The latter happens when the cursor position is smaller than the elements it has to move
     /// backwards by.
     #[inline]
-    pub fn move_cursor_back_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+    pub fn move_cursor_back_or_reset(&mut self, n: usize) -> &mut PeekMoreIterator<I, S> {
         if self.cursor < n {
             self.reset_cursor();
         } else {
@@ -545,7 +540,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
     /// Move the cursor to the n-th element of the queue.
     #[inline]
-    pub fn move_nth(&mut self, n: usize) -> &mut PeekMoreIterator<I> {
+    pub fn move_nth(&mut self, n: usize) -> &mut PeekMoreIterator<I, S> {
         self.cursor = n;
         self
     }
@@ -746,7 +741,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 }
 
-impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
+impl<'a, I: Iterator, const S: usize> Iterator for PeekMoreIterator<I, S> {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -765,12 +760,12 @@ impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
 /// Uses [`ExactSizeIterator`] default implementation.
 ///
 /// [`ExactSizeIterator`]: https://doc.rust-lang.org/core/iter/trait.ExactSizeIterator.html
-impl<I: ExactSizeIterator> ExactSizeIterator for PeekMoreIterator<I> {}
+impl<I: ExactSizeIterator, const S: usize> ExactSizeIterator for PeekMoreIterator<I, S> {}
 
 /// Uses [`FusedIterator`] default implementation.
 ///
 /// [`FusedIterator`]: https://doc.rust-lang.org/core/iter/trait.FusedIterator.html
-impl<I: FusedIterator> FusedIterator for PeekMoreIterator<I> {}
+impl<I: FusedIterator, const S: usize> FusedIterator for PeekMoreIterator<I, S> {}
 
 /// This enumeration provides errors which represent lack of success of the [`PeekMoreIterator`].
 ///
