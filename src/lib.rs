@@ -640,31 +640,18 @@ impl<I: Iterator> PeekMoreIterator<I> {
     /// assert_eq!(iter.next(), Some(&3));
     ///```
     pub fn truncate_iterator_to_cursor(&mut self) {
-        // if the cursor and the queue length are equal,
-        // then we want to clear the queue completely
-        let is_equal = self.cursor == self.queue.len();
-
-        // if the cursor is greater than the queue length,
-        // we want to remove the overflow from the iterator
-        for _ in 0..self.cursor.saturating_sub(self.queue.len()) {
-            let _ = self.iterator.next();
+        if self.cursor < self.queue.len() {
+            self.queue.drain(0..self.cursor);
+        } else {
+            // if the cursor is greater than the queue length,
+            // we want to remove the overflow from the iterator
+            for _ in 0..self.cursor.saturating_sub(self.queue.len()) {
+                let _ = self.iterator.next();
+            }
+            self.queue.clear();
         }
 
         self.cursor = 0;
-
-        // if `self.queue.pop()` is `None`, then it is not necessary
-        // to clear the queue
-        //
-        // otherwise, we pop the last item and clear the queue.
-        // if the cursor and queue were equal, then we discard the value
-        //
-        // otherwise we insert it back into the queue
-        if let Some(v) = self.queue.pop() {
-            self.queue.clear();
-            if !is_equal {
-                self.queue.push(v);
-            }
-        }
     }
 
     /// Returns a view into the next `start` (inclusive) to `end` (exclusive) elements.
@@ -1582,6 +1569,29 @@ mod tests {
     fn truncate_to_iterator_cursor_and_queue_equal_length() {
         let mut iter = [0, 1, 2, 3].iter().peekmore();
         iter.peek();
+        iter.advance_cursor();
+        iter.truncate_iterator_to_cursor();
+
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn truncate_to_iterator_cursor_less_than_queue_length() {
+        let mut iter = [0, 1, 2, 3].iter().peekmore();
+        iter.peek_nth(2);
+        iter.truncate_iterator_to_cursor();
+
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), None);
+
+        let mut iter = [0, 1, 2, 3].iter().peekmore();
+        iter.peek_nth(3);
         iter.advance_cursor();
         iter.truncate_iterator_to_cursor();
 
