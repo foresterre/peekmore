@@ -746,7 +746,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 }
 
-impl<'a, I: Iterator> Iterator for PeekMoreIterator<I> {
+impl<I: Iterator> Iterator for PeekMoreIterator<I> {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
