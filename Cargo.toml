@@ -1,8 +1,8 @@
 [package]
 name = "peekmore"
 version = "1.1.0"
-authors = ["foresterre <garm@ilumeo.com>"]
-description = "Iterator which can peek forward multiple elements."
+authors = ["Martijn Gribnau <garm@ilumeo.com>"]
+description = "Iterator adapter like Peekable, but for peeking forward multiple elements"
 edition = "2018"
 repository = "https://github.com/foresterre/peekmore"
 license = "MIT OR Apache-2.0"
