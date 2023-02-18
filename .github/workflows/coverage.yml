@@ -1,0 +1,27 @@
+name: "ci-coverage"
+on:
+  pull_request:
+jobs:
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: checkout_repository
+        uses: actions/checkout@v3
+
+      - name: install_rust_nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: install_code_coverage_tool
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: generate_code_coverage
+        # `--lib` ensures we only run unit tests, no integration tests.
+        run: cargo llvm-cov --all-features --locked --lcov --output-path lcov.info --lib
+
+      - name: upload_code_coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
