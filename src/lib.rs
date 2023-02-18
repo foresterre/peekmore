@@ -595,8 +595,12 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     fn increment_cursor(&mut self) {
         // do not overflow
-        if self.cursor < core::usize::MAX {
-            self.cursor += 1;
+        // clippy allowed since saturating_add was only added in Rust 1.47, and our MSRV is 1.40
+        #[allow(clippy::implicit_saturating_add)]
+        {
+            if self.cursor < core::usize::MAX {
+                self.cursor += 1;
+            }
         }
     }
 
