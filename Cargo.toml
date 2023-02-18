@@ -16,6 +16,9 @@ exclude = [
 keywords = ["peek", "lookahead", "iterator", "peekable", "multipeek"]
 categories = ["no-std"]
 
+[package.metadata]
+msrv = "1.40.0"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
