@@ -602,12 +602,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     fn increment_cursor(&mut self) {
         // do not overflow
         // clippy allowed since saturating_add was only added in Rust 1.47, and our MSRV is 1.40
-        #[allow(clippy::implicit_saturating_add)]
-        {
-            if self.cursor < core::usize::MAX {
-                self.cursor += 1;
-            }
-        }
+        self.cursor = self.cursor.saturating_add(1);
     }
 
     /// Decrement the cursor which points to the current peekable item.
