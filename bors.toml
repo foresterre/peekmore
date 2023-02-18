@@ -1,0 +1,10 @@
+status = [
+    "fmt",
+    "linter",
+    "msrv",
+    "test (ubuntu-stable)",
+    "test (macos-stable)",
+    "test (win-gnu-stable)",
+    "test (win-msvc-stable)",
+    "test (ubuntu-beta)",
+]
