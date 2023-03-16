@@ -16,7 +16,7 @@ the [issue tracker](https://github.com/foresterre/peekmore/issues).
 
 ### Added
 
-* Added `PeekMoreIterator::cursor` method #69
+* Added `PeekMoreIterator::cursor` method #69 #71
 
 [1.2.0]: https://github.com/foresterre/peekmore/releases/tag/v1.2.0
 
