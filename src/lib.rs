@@ -615,8 +615,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
-    #[doc(hidden)]
-    #[cfg(test)]
+    /// Return the current cursor position.
+    /// This is intended for use by code that more finely controls where the iterator resets to.
+    #[inline]
     fn cursor(&self) -> usize {
         self.cursor
     }
