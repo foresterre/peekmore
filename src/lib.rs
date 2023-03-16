@@ -575,6 +575,13 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.cursor = 0;
     }
 
+    /// Return the current cursor position.
+    /// This is intended for use by code that more finely controls where the iterator resets to.
+    #[inline]
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
     /// Fills the queue up to (including) the cursor.
     #[inline]
     fn fill_queue(&mut self, required_elements: usize) {
@@ -613,13 +620,6 @@ impl<I: Iterator> PeekMoreIterator<I> {
         if self.cursor > core::usize::MIN {
             self.cursor -= 1;
         }
-    }
-
-    /// Return the current cursor position.
-    /// This is intended for use by code that more finely controls where the iterator resets to.
-    #[inline]
-    fn cursor(&self) -> usize {
-        self.cursor
     }
 
     /// Remove all elements from the start of the iterator until reaching the same
