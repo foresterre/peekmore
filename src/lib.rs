@@ -1,4 +1,4 @@
-#![no_std]
+// #![no_std] // TODO enable
 #![deny(missing_docs)]
 #![deny(clippy::all)]
 
@@ -92,6 +92,7 @@ extern crate alloc;
 /// As a result of the above, `doctest` is disabled on the CI for Rust versions below `1.40`.
 #[cfg(doctest)]
 extern crate std;
+extern crate core;
 
 /// Use the system allocator when running doc tests.
 ///
@@ -108,6 +109,8 @@ use core::iter::FusedIterator;
 /// Use a `Vec` to queue iterator elements if the `smallvec` feature is disabled.
 #[cfg(not(feature = "smallvec"))]
 use alloc::vec::Vec;
+use core::fmt::Debug;
+use std::ops::Deref;
 
 /// Use a SmallVec to queue iterator elements instead of a Vec, if the `smallvec` feature is enabled
 /// (default).
@@ -582,6 +585,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
 
         if stored_elements <= required_elements {
             for _ in stored_elements..=required_elements {
+                dbg!("filling queue!");
                 self.push_next_to_queue()
             }
         }
@@ -591,6 +595,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     fn push_next_to_queue(&mut self) {
         let item = self.iterator.next();
+        dbg!(item.is_some());
         self.queue.push(item);
     }
 
@@ -620,6 +625,14 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// Ensures the queue is filled for `n` elements.
+    #[inline]
+    fn ensure_queue_is_filled(&mut self, n: usize) {
+        if n > self.queue.len() {
+            self.fill_queue(n);
+        }
     }
 
     /// Remove all elements from the start of the iterator until reaching the same
@@ -693,12 +706,9 @@ impl<I: Iterator> PeekMoreIterator<I> {
         );
 
         // fill the queue if we don't have enough elements
-        if end > self.queue.len() {
-            self.fill_queue(end);
-        }
+        self.ensure_queue_is_filled(end);
 
         // return a view of the selected range
-
         &self.queue.as_slice()[start..end]
     }
 
@@ -735,6 +745,60 @@ impl<I: Iterator> PeekMoreIterator<I> {
     #[inline]
     pub fn peek_amount(&mut self, n: usize) -> &[Option<I::Item>] {
         self.peek_range(0, n)
+    }
+
+    /// Returns a view into the next `n` unconsumed elements of the iterator, **and** advances the
+    /// cursor by `n` elements. Variation on [`peek_amount`], which also advances the cursor.
+    ///
+    /// `n` represents the amount of elements as counted from the start of the unconsumed iterator.
+    ///
+    /// **Note:** This method does modify the position of the cursor.
+    ///
+    /// # Example:
+    ///
+    /// ```
+    /// use peekmore::PeekMore;
+    ///
+    /// let iterable = [1, 2, 3];
+    /// let mut iter = iterable.iter().peekmore();
+    ///
+    /// assert_eq!(iter.peek_amount_and_advance(2), &[Some(&1), Some(&2)]);
+    /// assert_eq!(iter.peek_amount_and_advance(2), &[Some(&3), None]);
+    /// ```
+    ///
+    /// [`peek_range`]: struct.PeekMoreIterator.html#method.peek_range
+    /// [`peek_amount`]: struct.PeekMoreIterator.html#method.peek_amount
+    #[inline]
+    pub fn peek_amount_and_advance(&mut self, n: usize) -> &[Option<I::Item>] {
+        let end = self.cursor + n;
+
+        // TODO consider name, as peek_amount does always peek (0, n), never peek (cursor, cursor + n),
+        //  but not peeking from the cursor does hardly make any sense if we also advance the cursor
+        //  every time.
+
+        // fill the queue if we don't have enough elements
+        self.ensure_queue_is_filled(end);
+
+        dbg!(self.cursor, n, end);
+
+        // advance the cursor
+        self.advance_cursor_by(n);
+
+        // return a view of the queue for the chosen amount of elements
+        &self.queue.as_slice()[self.cursor..end]
+    }
+
+
+}
+
+// TODO remove
+impl<T: Debug, I: Iterator<Item = T>> PeekMoreIterator<I> {
+    pub fn queue(&self) -> &[Option<<I as Iterator>::Item>] {
+        self.queue.deref()
+    }
+
+    pub fn queue_mut(&mut self) -> &[Option<<I as Iterator>::Item>] {
+        self.queue.deref()
     }
 }
 
@@ -1809,5 +1873,42 @@ mod tests {
 
         assert_eq!(view[0], Some(&1));
         assert_eq!(view[1], Some(&2));
+    }
+
+    #[test]
+    fn peek_amount_with_incremented_cursor() {
+        let mut peeking_queue = [0, 1, 2, 3].iter().peekmore();
+        peeking_queue.advance_cursor_by(2);
+        assert_eq!(peeking_queue.cursor(), 2);
+
+        // Despite incrementing the cursor, the `peek_amount` method always presents a view from the start
+        // of the queue; i.e. the unconsumed elements.
+        let view = peeking_queue.peek_amount(2);
+
+        assert_eq!(view[0], Some(&0));
+        assert_eq!(view[1], Some(&1));
+    }
+
+    #[test]
+    fn peek_amount_and_advance() {
+        let mut peeking_queue = [0].iter().peekmore();
+
+        dbg!(&peeking_queue);
+
+        let _ = peeking_queue.peek_amount_and_advance(2);
+
+        dbg!(&peeking_queue);
+
+        // assert_eq!(view[0], Some(&0));
+        // assert_eq!(view[1], None);
+        assert_eq!(peeking_queue.cursor(), 2);
+
+        dbg!(peeking_queue.queue_mut());
+
+
+
+        //
+        // let view = peeking_queue.peek_amount_and_advance(2);
+        // assert_eq!(view, &[None, None]);
     }
 }
