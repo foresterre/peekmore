@@ -12,6 +12,14 @@ the [issue tracker](https://github.com/foresterre/peekmore/issues).
 
 [Unreleased]: https://github.com/foresterre/cargo-msrv
 
+## [1.2.0] - 2022-03-16
+
+### Added
+
+* Added `PeekMoreIterator::cursor` method #69
+
+[1.2.0]: https://github.com/foresterre/peekmore/releases/tag/v1.2.0
+
 ## [1.1.0] - 2022-02-18
 
 ### Added
