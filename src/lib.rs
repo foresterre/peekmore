@@ -490,7 +490,6 @@ impl<I: Iterator> PeekMoreIterator<I> {
             self.increment_cursor();
             self.advance_cursor_while(predicate)
         } else {
-            self.decrement_cursor();
             self
         }
     }
