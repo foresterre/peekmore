@@ -479,6 +479,13 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Moves the cursor forward until the predicate is no longer `true`.
+    ///
+    /// After this method returns, the cursor points to the first element that fails `predicate`. If no peeked elements
+    /// pass `predicate` then the cursor will remain unchanged.
+    ///
+    /// This does not advance the iterator itself. To advance the iterator, call [`next()`] instead.
+    ///
+    /// [`next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
     pub fn advance_cursor_while<P: Fn(Option<&I::Item>) -> bool>(
         &mut self,
