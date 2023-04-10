@@ -1407,8 +1407,8 @@ mod tests {
         let _ = iter.advance_cursor_while(|i| **i.unwrap() != 3);
 
         let peek = iter.peek();
-        assert_eq!(peek, Some(&&2));
-        assert_eq!(iter.cursor(), 1);
+        assert_eq!(peek, Some(&&3));
+        assert_eq!(iter.cursor(), 2);
     }
 
     #[test]
@@ -1431,8 +1431,22 @@ mod tests {
         let _ = iter.advance_cursor_while(|i| i.is_some());
 
         let peek = iter.peek();
-        assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.cursor(), 3);
+        assert_eq!(peek, None);
+        assert_eq!(iter.cursor(), 4);
+    }
+
+    #[test]
+    fn check_move_forward_while_fast_fail() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        iter.advance_cursor_by(2);
+
+        let _ = iter.advance_cursor_while(|i| **i.unwrap() > 3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&3));
+        assert_eq!(iter.cursor(), 2);
     }
 
     #[test]
