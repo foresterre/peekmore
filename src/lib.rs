@@ -479,6 +479,13 @@ impl<I: Iterator> PeekMoreIterator<I> {
     }
 
     /// Moves the cursor forward until the predicate is no longer `true`.
+    ///
+    /// After this method returns, the cursor points to the first element that fails `predicate`. If no peeked elements
+    /// pass `predicate` then the cursor will remain unchanged.
+    ///
+    /// This does not advance the iterator itself. To advance the iterator, call [`next()`] instead.
+    ///
+    /// [`next()`]: struct.PeekMoreIterator.html#impl-Iterator
     #[inline]
     pub fn advance_cursor_while<P: Fn(Option<&I::Item>) -> bool>(
         &mut self,
@@ -490,7 +497,6 @@ impl<I: Iterator> PeekMoreIterator<I> {
             self.increment_cursor();
             self.advance_cursor_while(predicate)
         } else {
-            self.decrement_cursor();
             self
         }
     }
@@ -1401,8 +1407,8 @@ mod tests {
         let _ = iter.advance_cursor_while(|i| **i.unwrap() != 3);
 
         let peek = iter.peek();
-        assert_eq!(peek, Some(&&2));
-        assert_eq!(iter.cursor(), 1);
+        assert_eq!(peek, Some(&&3));
+        assert_eq!(iter.cursor(), 2);
     }
 
     #[test]
@@ -1425,8 +1431,22 @@ mod tests {
         let _ = iter.advance_cursor_while(|i| i.is_some());
 
         let peek = iter.peek();
-        assert_eq!(peek, Some(&&4));
-        assert_eq!(iter.cursor(), 3);
+        assert_eq!(peek, None);
+        assert_eq!(iter.cursor(), 4);
+    }
+
+    #[test]
+    fn check_move_forward_while_fast_fail() {
+        let iterable = [1, 2, 3, 4];
+        let mut iter = iterable.iter().peekmore();
+
+        iter.advance_cursor_by(2);
+
+        let _ = iter.advance_cursor_while(|i| **i.unwrap() > 3);
+
+        let peek = iter.peek();
+        assert_eq!(peek, Some(&&3));
+        assert_eq!(iter.cursor(), 2);
     }
 
     #[test]
