@@ -12,6 +12,16 @@ the [issue tracker](https://github.com/foresterre/peekmore/issues).
 
 [Unreleased]: https://github.com/foresterre/cargo-msrv
 
+## [1.2.1] - 2023-04-11
+
+### Fixed
+
+* Fix issue with `advance_cursor_while`, where cursor would incorrectly be decremented  #72 #73
+
+[1.2.1]: https://github.com/foresterre/peekmore/releases/tag/v1.2.1
+
+
+
 ## [1.2.0] - 2022-03-16
 
 ### Added
