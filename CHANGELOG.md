@@ -12,6 +12,14 @@ the [issue tracker](https://github.com/foresterre/peekmore/issues).
 
 [Unreleased]: https://github.com/foresterre/cargo-msrv
 
+## [1.3.0] - 2023-06-05
+
+### Added
+
+* Added `PeekMoreIterator::next_if` and `PeekMoreIterator::next_if_eq` #74 #75
+
+[1.3.0]: https://github.com/foresterre/peekmore/releases/tag/v1.3.0
+
 ## [1.2.1] - 2023-04-11
 
 ### Fixed
@@ -19,8 +27,6 @@ the [issue tracker](https://github.com/foresterre/peekmore/issues).
 * Fix issue with `advance_cursor_while`, where cursor would incorrectly be decremented  #72 #73
 
 [1.2.1]: https://github.com/foresterre/peekmore/releases/tag/v1.2.1
-
-
 
 ## [1.2.0] - 2022-03-16
 
