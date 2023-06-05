@@ -742,6 +742,59 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn peek_amount(&mut self, n: usize) -> &[Option<I::Item>] {
         self.peek_range(0, n)
     }
+
+    /// Consumes and returns the next item of this iterator if a condition is true.
+    ///
+    /// If `func` returns `true` for the next item of this iterator, consume and return it.
+    /// Otherwise, return `None`.
+    ///
+    /// Note: This function always uses the next item of the iterator and it is independent of
+    /// the cursor location.
+    ///
+    /// # Example:
+    /// Consume items one-by-one.
+    /// ```
+    /// use peekmore::PeekMore;
+    ///
+    /// let mut iter = (1..5).peekmore();
+    ///
+    /// assert_eq!(iter.next_if(|&x| x == 1), Some(1));
+    ///
+    /// // next_eq does not care about the cursor position
+    /// let mut iter = iter.advance_cursor();
+    /// assert_eq!(iter.peek(), Some(&3));
+    /// assert_eq!(iter.next_if(|&x| x == 2), Some(2));
+    /// ```
+    /// Consume a range of items.
+    /// ```
+    /// use peekmore::PeekMore;
+    ///
+    /// let mut iter = (1..15).peekmore();
+    ///
+    /// while iter.next_if(|&x| x <= 10).is_some() {}
+    /// assert_eq!(iter.next(), Some(11));
+    /// ```
+    #[inline]
+    pub fn next_if(&mut self, func: impl FnOnce(&I::Item) -> bool) -> Option<I::Item> {
+        match self.peek_first() {
+            Some(matched) if func(matched) => self.next(),
+            _ => None,
+        }
+    }
+
+    /// Consumes and returns the next item if it is equal to `expected`.
+    ///
+    /// Uses [`next_eq`] underneath.
+    ///
+    /// [`next_eq`]: struct.PeekMoreIterator.html#method.next_if
+    #[inline]
+    pub fn next_if_eq<T>(&mut self, expected: &T) -> Option<I::Item>
+    where
+        T: ?Sized,
+        I::Item: PartialEq<T>,
+    {
+        self.next_if(|next| next == expected)
+    }
 }
 
 impl<I: Iterator> Iterator for PeekMoreIterator<I> {
@@ -1829,5 +1882,84 @@ mod tests {
 
         assert_eq!(view[0], Some(&1));
         assert_eq!(view[1], Some(&2));
+    }
+
+    #[test]
+    fn next_if_works() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert_eq!(iter.next_if(|&x| *x == 1), Some(&1));
+
+        assert_eq!(iter.peek(), Some(&&2));
+        assert_eq!(iter.next_if(|&x| *x < 4), Some(&2));
+        assert_eq!(iter.peek(), Some(&&3));
+
+        assert_eq!(iter.peek(), Some(&&3));
+        assert_eq!(iter.next_if(|&x| *x != 3), None);
+        assert_eq!(iter.peek(), Some(&&3));
+
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next_if(|&_x| true), Some(&4));
+    }
+
+    #[test]
+    fn next_if_exhausted() {
+        let iterable = [1, 2];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert_eq!(iter.next_if(|&x| *x == 1), Some(&1));
+        assert_eq!(iter.next_if(|&x| *x == 2), Some(&2));
+
+        assert_eq!(iter.next_if(|&x| *x == 2), None);
+    }
+
+    #[test]
+    fn next_if_loop() {
+        let iterable = 1..15;
+
+        let mut iter = iterable.peekmore();
+
+        while iter.next_if(|&x| x < 10).is_some() {}
+        assert_eq!(iter.next(), Some(10));
+    }
+
+    #[test]
+    fn next_if_with_advanced_cursor() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert_eq!(iter.peek(), Some(&&1));
+        let iter = iter.advance_cursor();
+        let iter = iter.advance_cursor();
+        assert_eq!(iter.peek(), Some(&&3));
+        assert_eq!(iter.next_if(|&x| *x == 1), Some(&1));
+        assert_eq!(iter.peek(), Some(&&3));
+        assert_eq!(iter.next_if(|&x| *x == 2), Some(&2));
+    }
+
+    #[test]
+    fn next_if_eq_works() {
+        let iterable = [1, 2, 3, 4];
+
+        let mut iter = iterable.iter().peekmore();
+
+        assert_eq!(iter.next_if_eq(&&1), Some(&1));
+
+        assert_eq!(iter.peek(), Some(&&2));
+        assert_eq!(iter.next_if_eq(&&2), Some(&2));
+        assert_eq!(iter.peek(), Some(&&3));
+
+        assert_eq!(iter.peek(), Some(&&3));
+        assert_eq!(iter.next_if_eq(&&0), None);
+        assert_eq!(iter.peek(), Some(&&3));
+
+        assert_eq!(iter.next_if_eq(&&3), Some(&3));
+        assert_eq!(iter.next_if_eq(&&4), Some(&4));
+
+        assert_eq!(iter.next_if_eq(&&5), None);
     }
 }
